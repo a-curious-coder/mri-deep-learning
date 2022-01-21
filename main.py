@@ -3,6 +3,7 @@ import os
 import pandas as pd
 
 from dotenv import load_dotenv
+from sklearn.decomposition import PCA
 
 def normalize_tabular_data(mri_data):
     """Normalizes the values of each column (Excluding columns unrelated to the MRI scan itself)
@@ -55,8 +56,24 @@ def main():
                           aws_access_key_id=access_key,
                           aws_secret_access_key=secret_access_key)
 
+    print("-------------------\nLoad Data\n -------------------")
     mri_data = get_tabular_data(client)
+    print("-------------------\nNormalize Data\n -------------------")
     normalized_mri_data = normalize_tabular_data(mri_data)
+    # NaN values occur because there are a bunch of columns filled with zeros, thus can't be normalized
+    normalized_mri_data = normalized_mri_data.fillna(0)
+    print("-------------------\nFiltered Data\n -------------------")
+    # Filter data to remove last 6 columns (irrelevant)
+    filtered_data = normalized_mri_data.iloc[:, :normalized_mri_data.shape[1]-6]
+    # Checks if any values are NaN
+    nan_values = filtered_data.isna()
+    nan_columns = nan_values.any()
+    columns_with_nan = filtered_data.columns[nan_columns].tolist()
+    print(columns_with_nan)
+    print("-------------------\nPCA\n -------------------")
+    pca = PCA(n_components=2)
+    pca.fit(filtered_data)
+    print(pca.components_)
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ python main.py
 
 ## Exploratory Data Analysis
 Classification of Alzheimer's Disease from the MRI datasets is a binary classification problem as the patients either have Alzheimer's Disease (AD) or they are Cognitive Normal (CN).
-
+### Tabular Data (ADNI/IXI)
 Each patient is represented by a unique Security ID (SID). Each patient has had at least 2 scan sessions, thus has 2 or more MRI scans. In the effort of dimensionality reduction, I should try and represent each patient within a single row.
 <!-- Pie chart for Diagnosis to represent binary ratio -->
 <!--  Will Cross Validation be needed due to size/ratio of diagnosis -->

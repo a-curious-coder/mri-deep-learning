@@ -80,6 +80,24 @@ def linear_regression(X, y):
     print(reg.score(x_test, y_test))
 
 
+def train_test_split_mri(x, y, test_size = 0.2):
+    """Splits the Tabular MRI data into train/test sets.
+    Dataset contains multiple scans for some patients, we wouldn't want the same patient being included in both training and test sets.
+
+    Args:
+        x ([type]): [description]
+        y ([type]): [description]
+        test_size (float, optional): [description]. Defaults to 0.2.
+
+    Returns:
+        lists: Training and test splits
+    """
+    # TODO: Split dataset into a list of dataframes; one dataframe for each patient
+    # Split list of dataframes into training/test split and create training /test sets from them.
+    # return x_train, x_test, y_train, y_test
+    pass
+
+
 def main():
     # Loads access keys in from .env file
     load_dotenv()   

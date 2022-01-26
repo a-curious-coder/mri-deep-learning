@@ -5,6 +5,7 @@ import os
 import math
 import pandas as pd
 import plotly
+import random
 
 from dotenv import load_dotenv
 from sklearn.decomposition import PCA, TruncatedSVD
@@ -132,18 +133,20 @@ def random_forest_pca(X, y):
     print(f"[*]\t{count / float(len(pred))*100:.2f}%\tRandom Forest PCA")
 
 
-def keras_network(X, y, test_size):
+def keras_network(data, test_size):
     # print(X.head())
-    x_train, x_test, y_train, y_test = train_test_split(X,
-                                                        y,
-                                                        test_size=test_size,
-                                                        random_state=4)
+    # x_train, x_test, y_train, y_test = train_test_split(X,
+    #                                                     y,
+    #                                                     test_size=test_size,
+    #                                                     random_state=4)
+    x_train, x_test, y_train, y_test = train_test_split_mri(data, test_size=test_size)
     # print(
     #     f"Train set size: {x_train.shape[0]}, test set size: {x_test.shape[0]}"
     # )
-    epochs = 2000
+    epochs = 300
     size = math.floor((x_train.shape[0] / 10) * 9)
-    if not exists(f"mri_model_{epochs}.tf"):
+    rewrite_model = False
+    if not exists(f"models/mri_model_{epochs}.tf") or rewrite_model:
         # Prepare network
         network = models.Sequential()
         network.add(layers.Dense(16, activation='relu', input_shape=(433, )))
@@ -172,16 +175,16 @@ def keras_network(X, y, test_size):
         val_acc = history_dict['val_acc']
         print(f"Accuracy: {history_dict['acc']}")
         print(f"Validation Accuracy: {history_dict['acc']}")
-        v.plot_accuracy(acc, val_acc)
+        v.plot_accuracy(acc[10:], val_acc[10:])
     else:
-        network = models.load_model(f"mri_model_{epochs}.tf")
+        network = models.load_model(f"models/mri_model_{epochs}.tf")
     # predictions = network.predict(x_test)
 
     predictions = network.evaluate(x_test, y_test, verbose = 0)
     print(f"[*]\t{predictions[1]*100:.2f}%\tKeras Neural Network")
 
 
-def train_test_split_mri(x, y, test_size=0.2):
+def train_test_split_mri(data, test_size=0.2):
     """Splits the Tabular MRI data into train/test sets.
     Dataset contains multiple scans for some patients, we wouldn't want the same patient being included in both training and test sets.
 
@@ -193,10 +196,46 @@ def train_test_split_mri(x, y, test_size=0.2):
     Returns:
         lists: Training and test splits
     """
+
     # TODO: Split dataset into a list of dataframes; one dataframe for each patient
+    names = data['SID'].unique()
+    # Shuffle names
+    random.shuffle(names)
+    # Split names array to train and test
+    train_names, test_names = train_test_split(names, test_size = test_size)
+    
+    # Train
+    x_train = data[data.SID.isin(train_names)]
+    x_train = x_train.iloc[:, :x_train.shape[1] - 6]
+
+    x_test = data[data.SID.isin(test_names)]
+    x_test = x_test.iloc[:, :x_test.shape[1] - 6]
+
+    y_train = data[data.SID.isin(train_names)]
+    y_train = y_train['Research Group']
+
+    y_test = data[data.SID.isin(test_names)]
+    y_test = y_test['Research Group']
+    # Test
+    print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
+
+    # TODO: Create training/test sets based on name order
+    # Filter data to remove last 6 columns (irrelevant)
+    # filtered_data = data.iloc[:, :data.shape[1] - 6]
+    # # Checks if any values are NaN
+    # nan_values = filtered_data.isna()
+    # nan_columns = nan_values.any()
+    # columns_with_nan = filtered_data.columns[nan_columns].tolist()
+    
+    # X = filtered_data.copy()
+    # # Labels only
+    # y = data['Research Group']
+    y_train = y_train.replace("AD", 1)
+    y_train = y_train.replace("CN", 0)
+    y_test = y_test.replace("AD", 1)
+    y_test = y_test.replace("CN", 0)
     # Split list of dataframes into training/test split and create training /test sets from them.
-    # return x_train, x_test, y_train, y_test
-    pass
+    return x_train, x_test, y_train, y_test
 
 
 def prepare_directory():
@@ -207,23 +246,24 @@ def prepare_directory():
     if not os.path.isdir("models"):
         os.mkdir("models")
 
+
 def main():
+    # Prepares working directory to store deep learning models
     prepare_directory()
-    v.verify_import()
     # Loads access keys in from .env file
     load_dotenv()
     access_key = os.getenv("ACCESS_KEY")
     secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     test_size = float(os.getenv("TEST_SET_SIZE"))
 
+    # Initialise AWS client to access Tabular Data
     client = boto3.client('s3',
                           aws_access_key_id=access_key,
                           aws_secret_access_key=secret_access_key)
 
     print("-------------------\nLoad Data\n-------------------")
     mri_data = get_tabular_data(client)
-    print(
-        "-------------------\nExploratory Data Analysis\n-------------------")
+    print("-------------------\nExploratory Data Analysis\n-------------------")
     print_data_shape(mri_data)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
     print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
@@ -240,20 +280,10 @@ def main():
     # Drop columns
     normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
 
-    # Filter data to remove last 6 columns (irrelevant)
-    filtered_data = normalized_mri_data.iloc[:, :normalized_mri_data.shape[1] -
-                                             6]
-    # Checks if any values are NaN
-    nan_values = filtered_data.isna()
-    nan_columns = nan_values.any()
-    columns_with_nan = filtered_data.columns[nan_columns].tolist()
-    X = filtered_data.copy()
-    y = normalized_mri_data['Research Group']
-    y = y.replace("AD", 1)
-    y = y.replace("CN", 0)
+    train_test_split_mri(normalized_mri_data)
 
     # Models
-    machine_learning = True
+    machine_learning = False
     deep_learning = True
     if machine_learning:
         print(
@@ -266,7 +296,7 @@ def main():
 
     if deep_learning:
         print("-------------------\nDeep Learning Models\n-------------------")
-        keras_network(X, y, test_size)
+        keras_network(normalized_mri_data, test_size)
 
 
 if __name__ == "__main__":

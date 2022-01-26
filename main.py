@@ -15,6 +15,7 @@ from sklearn.ensemble import RandomForestClassifier
 from tensorflow.keras import models
 from tensorflow.keras import layers
 from os.path import exists
+from scipy.stats import pearsonr
 
 
 def print_data_shape(data):
@@ -137,7 +138,7 @@ def keras_network(data, test_size):
     x_train, x_test, y_train, y_test = train_test_split_mri(
         data, test_size=test_size)
 
-    epochs = 275
+    epochs = 250
     size = math.floor((x_train.shape[0] / 10) * 9)
     rewrite_model = False
     # TODO: Loop over lists of settings and choose them based on evaulation accuracy on same data split
@@ -149,7 +150,7 @@ def keras_network(data, test_size):
         network.add(layers.Dense(16, activation='relu'))
         network.add(layers.Dense(1, activation='sigmoid'))
 
-        network.compile(optimizer='rmsprop',
+        network.compile(optimizer='adam',
                         loss='binary_crossentropy',
                         metrics=['accuracy'])
 
@@ -162,7 +163,8 @@ def keras_network(data, test_size):
                               partial_y_train,
                               epochs=epochs,
                               batch_size=512,
-                              validation_data=(x_val, y_val))
+                              validation_data=(x_val, y_val),
+                              verbose = 0)
         # Save mri network
         network.save(f"models/mri_model_{epochs}.tf")
         history_dict = history.history
@@ -233,6 +235,25 @@ def train_test_split_mri(data, test_size=0.2):
     # Split list of dataframes into training/test split and create training /test sets from them.
     return x_train, x_test, y_train, y_test
 
+def correlation(data):
+    print("-------------------\nCorrelation\n-------------------")
+    columns = []
+    data_columns = data.columns
+    inner_columns = data.iloc[:, 1:].columns
+    for i, column in enumerate(data_columns):
+        for j, column2 in enumerate(inner_columns):
+            try:
+                corr, _ = pearsonr(data[column], data[column2])
+                if corr > 0.9:
+                    # print(column, column2, corr)
+                    columns.append(column)
+                    columns.append(column2)
+            except:
+                pass
+    df = pd.DataFrame({"columns":columns})
+    print(df['columns'].unique())
+    
+
 
 def prepare_directory():
     """Creates necessary folders in preparation for data/models saved
@@ -271,13 +292,8 @@ def main():
     print("-------------------\nPreprocessing Data\n-------------------")
     print("[*]\tStandardize / Normalize Data")
     normalized_mri_data = normalize_tabular_data(mri_data)
-    # print_null_values(normalized_mri_data)
-    # NaN values occur because there are a bunch of columns filled with zeros, thus can't be normalized
-    # normalized_mri_data = normalized_mri_data.fillna(0)
-    # Drop columns
+    # Drop columns filled with na/0 values
     normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
-
-    train_test_split_mri(normalized_mri_data)
 
     # Models
     machine_learning = False
@@ -294,6 +310,9 @@ def main():
     if deep_learning:
         print("-------------------\nDeep Learning Models\n-------------------")
         keras_network(normalized_mri_data, test_size)
+
+    correlation(normalized_mri_data)
+    print("done")
 
 
 if __name__ == "__main__":

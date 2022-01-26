@@ -134,18 +134,14 @@ def random_forest_pca(X, y):
 
 
 def keras_network(data, test_size):
-    # print(X.head())
-    # x_train, x_test, y_train, y_test = train_test_split(X,
-    #                                                     y,
-    #                                                     test_size=test_size,
-    #                                                     random_state=4)
-    x_train, x_test, y_train, y_test = train_test_split_mri(data, test_size=test_size)
-    # print(
-    #     f"Train set size: {x_train.shape[0]}, test set size: {x_test.shape[0]}"
-    # )
-    epochs = 300
+    x_train, x_test, y_train, y_test = train_test_split_mri(
+        data, test_size=test_size)
+
+    epochs = 275
     size = math.floor((x_train.shape[0] / 10) * 9)
     rewrite_model = False
+    # TODO: Loop over lists of settings and choose them based on evaulation accuracy on same data split
+    settings = [['rmsprop', 'binary_crossentropy', 'accuracy'], ['adam', 'binary_crossentropy', 'accuracy']]
     if not exists(f"models/mri_model_{epochs}.tf") or rewrite_model:
         # Prepare network
         network = models.Sequential()
@@ -155,7 +151,7 @@ def keras_network(data, test_size):
 
         network.compile(optimizer='rmsprop',
                         loss='binary_crossentropy',
-                        metrics=['acc'])
+                        metrics=['accuracy'])
 
         x_val = x_train[:size]
         partial_x_train = x_train[size:]
@@ -171,16 +167,16 @@ def keras_network(data, test_size):
         network.save(f"models/mri_model_{epochs}.tf")
         history_dict = history.history
         print(history_dict.keys())
-        acc = history_dict['acc']
-        val_acc = history_dict['val_acc']
-        print(f"Accuracy: {history_dict['acc']}")
-        print(f"Validation Accuracy: {history_dict['acc']}")
+        acc = history_dict['accuracy']
+        val_acc = history_dict['val_accuracy']
+        # print(f"Accuracy: {history_dict['acc']}")
+        # print(f"Validation Accuracy: {history_dict['acc']}")
         v.plot_accuracy(acc[10:], val_acc[10:])
     else:
         network = models.load_model(f"models/mri_model_{epochs}.tf")
     # predictions = network.predict(x_test)
 
-    predictions = network.evaluate(x_test, y_test, verbose = 0)
+    predictions = network.evaluate(x_test, y_test, verbose=0)
     print(f"[*]\t{predictions[1]*100:.2f}%\tKeras Neural Network")
 
 
@@ -202,8 +198,8 @@ def train_test_split_mri(data, test_size=0.2):
     # Shuffle names
     random.shuffle(names)
     # Split names array to train and test
-    train_names, test_names = train_test_split(names, test_size = test_size)
-    
+    train_names, test_names = train_test_split(names, test_size=test_size)
+
     # Train
     x_train = data[data.SID.isin(train_names)]
     x_train = x_train.iloc[:, :x_train.shape[1] - 6]
@@ -226,7 +222,7 @@ def train_test_split_mri(data, test_size=0.2):
     # nan_values = filtered_data.isna()
     # nan_columns = nan_values.any()
     # columns_with_nan = filtered_data.columns[nan_columns].tolist()
-    
+
     # X = filtered_data.copy()
     # # Labels only
     # y = data['Research Group']
@@ -252,6 +248,7 @@ def main():
     prepare_directory()
     # Loads access keys in from .env file
     load_dotenv()
+    # Load in environment variables
     access_key = os.getenv("ACCESS_KEY")
     secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     test_size = float(os.getenv("TEST_SET_SIZE"))

@@ -6,6 +6,7 @@ import math
 import pandas as pd
 import plotly
 import random
+import tensorflow as tf
 
 from dotenv import load_dotenv
 from sklearn.decomposition import PCA, TruncatedSVD
@@ -135,54 +136,75 @@ def random_forest_pca(X, y):
 
 
 def keras_network(data, test_size):
-    x_train, x_test, y_train, y_test = train_test_split_mri(
-        data, test_size=test_size)
-
-    epochs = 250
-    size = math.floor((x_train.shape[0] / 10) * 9)
-    rewrite_model = False
-    # TODO: Loop over lists of settings and choose them based on evaulation accuracy on same data split
+    x_train, x_test, y_train, y_test = train_test_split_with_labels(data, test_size=test_size)
+    print("Accuracy\tNodes\tOptimizer\tLoss")
     settings = [['rmsprop', 'binary_crossentropy', 'accuracy'], ['adam', 'binary_crossentropy', 'accuracy']]
-    if not exists(f"models/mri_model_{epochs}.tf") or rewrite_model:
-        # Prepare network
-        network = models.Sequential()
-        network.add(layers.Dense(16, activation='relu', input_shape=(433, )))
-        network.add(layers.Dense(16, activation='relu'))
-        network.add(layers.Dense(1, activation='sigmoid'))
+    layer_1_nodes = 32
+    layer_2_nodes = 16
+    for setting in settings:
+        # print(type(x_train), type(x_test), type(y_train), type(y_test))
+        epochs = 250
+        # Validation set size
+        val_size = math.floor((x_train.shape[0] / 10) * 9)
+        rewrite_model = True
+        # TODO: Loop over lists of settings and choose them based on evaulation accuracy on same data split
+        if not exists(f"models/mri_model_{epochs}.tf") or rewrite_model:
+            with tf.device('/cpu:0'):
+                # Prepare network
+                network = models.Sequential()
+                network.add(layers.Dense(layer_1_nodes, activation='relu', input_shape=(x_train.shape[1], )))
+                network.add(layers.Dense(layer_2_nodes, activation='relu'))
+                network.add(layers.Dense(1, activation='sigmoid'))
 
-        network.compile(optimizer='adam',
-                        loss='binary_crossentropy',
-                        metrics=['accuracy'])
+                network.compile(optimizer=setting[0],
+                                loss=setting[1],
+                                metrics=[setting[2]])
 
-        x_val = x_train[:size]
-        partial_x_train = x_train[size:]
-        y_val = y_train[:size]
-        partial_y_train = y_train[size:]
+                x_val = x_train[:val_size]
+                partial_x_train = x_train[val_size:]
+                y_val = y_train[:val_size]
+                partial_y_train = y_train[val_size:]
 
-        history = network.fit(partial_x_train,
-                              partial_y_train,
-                              epochs=epochs,
-                              batch_size=512,
-                              validation_data=(x_val, y_val),
-                              verbose = 0)
-        # Save mri network
-        network.save(f"models/mri_model_{epochs}.tf")
-        history_dict = history.history
-        print(history_dict.keys())
-        acc = history_dict['accuracy']
-        val_acc = history_dict['val_accuracy']
-        # print(f"Accuracy: {history_dict['acc']}")
-        # print(f"Validation Accuracy: {history_dict['acc']}")
-        v.plot_accuracy(acc[10:], val_acc[10:])
-    else:
-        network = models.load_model(f"models/mri_model_{epochs}.tf")
-    # predictions = network.predict(x_test)
+                history = network.fit(partial_x_train,
+                                    partial_y_train,
+                                    epochs=epochs,
+                                    batch_size=512,
+                                    validation_data=(x_val, y_val),
+                                    verbose = 0)
+                # Save mri network
+                network.save(f"models/mri_model_{epochs}.tf")
+            history_dict = history.history
+            # print(history_dict.keys())
+            acc = history_dict['accuracy']
+            val_acc = history_dict['val_accuracy']
+            # print(f"Accuracy: {history_dict['acc']}")
+            # print(f"Validation Accuracy: {history_dict['acc']}")
+            v.plot_accuracy(acc[10:], val_acc[10:], f"mri_accuracy_{epochs}_{layer_1_nodes}_{layer_2_nodes}_{setting[0]}")
+        else:
+            network = models.load_model(f"models/mri_model_{epochs}.tf")
+        predictions = network.evaluate(x_test, y_test, verbose = 0)
+        print(f"[*]\t{predictions[1]*100:.2f}%\t({layer_1_nodes}, {layer_2_nodes})\t{setting[0]}\t{setting[1]}")
+        # predictions = network.predict(x_test)
 
-    predictions = network.evaluate(x_test, y_test, verbose=0)
-    print(f"[*]\t{predictions[1]*100:.2f}%\tKeras Neural Network")
+
+def split_data_train_test(data, test_size = 0.2):
+    """Splits data into train and test dataframes
+
+    Args:
+        data (pd.DataFrame): tabular MRI data
+
+    Returns:
+        pd.DataFrame: Train and Test sets
+    """
+    names = data['SID'].unique()
+    random.shuffle(names)
+    size = math.floor(data.shape[0]*test_size)
+    X = data.copy()
+    y = data['Research Group'].replace("AD", 1).replace("CN", 0)
+    return X, y
 
 
-def train_test_split_mri(data, test_size=0.2):
+def train_test_split_with_labels(data, test_size=0.2):
     """Splits the Tabular MRI data into train/test sets.
     Dataset contains multiple scans for some patients, we wouldn't want the same patient being included in both training and test sets.
 
@@ -202,7 +224,6 @@ def train_test_split_mri(data, test_size=0.2):
     # Split names array to train and test
     train_names, test_names = train_test_split(names, test_size=test_size)
 
-    # Train
     x_train = data[data.SID.isin(train_names)]
     x_train = x_train.iloc[:, :x_train.shape[1] - 6]
 
@@ -217,43 +238,47 @@ def train_test_split_mri(data, test_size=0.2):
     # Test
     print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
 
-    # TODO: Create training/test sets based on name order
-    # Filter data to remove last 6 columns (irrelevant)
-    # filtered_data = data.iloc[:, :data.shape[1] - 6]
-    # # Checks if any values are NaN
-    # nan_values = filtered_data.isna()
-    # nan_columns = nan_values.any()
-    # columns_with_nan = filtered_data.columns[nan_columns].tolist()
-
-    # X = filtered_data.copy()
-    # # Labels only
-    # y = data['Research Group']
-    y_train = y_train.replace("AD", 1)
-    y_train = y_train.replace("CN", 0)
-    y_test = y_test.replace("AD", 1)
-    y_test = y_test.replace("CN", 0)
     # Split list of dataframes into training/test split and create training /test sets from them.
     return x_train, x_test, y_train, y_test
-
-def correlation(data):
-    print("-------------------\nCorrelation\n-------------------")
-    columns = []
-    data_columns = data.columns
-    inner_columns = data.iloc[:, 1:].columns
-    for i, column in enumerate(data_columns):
-        for j, column2 in enumerate(inner_columns):
-            try:
-                corr, _ = pearsonr(data[column], data[column2])
-                if corr > 0.9:
-                    # print(column, column2, corr)
-                    columns.append(column)
-                    columns.append(column2)
-            except:
-                pass
-    df = pd.DataFrame({"columns":columns})
-    print(df['columns'].unique())
     
 
+def train_test_split_with_labels2(X, y, test_size=0.2):
+    """Splits the Tabular MRI data into train/test sets.
+    Dataset contains multiple scans for some patients, we wouldn't want the same patient being included in both training and test sets.
+
+    Args:
+        x (pd.DataFrame): data bar labels
+        y (pd.DataFrame): labels
+        test_size (float, optional): [description]. Defaults to 0.2.
+
+    Returns:
+        lists: Training and test splits
+    """
+
+    # TODO: Split dataset into a list of dataframes; one dataframe for each patient
+    names = X['SID'].unique()
+    # Shuffle names
+    random.shuffle(names)
+    # Split names array to train and test
+    train_names, test_names = train_test_split(names, test_size=test_size)
+
+    x_train = X[data.SID.isin(train_names)]
+    x_train = x_train.iloc[:, :x_train.shape[1] - 6]
+
+    x_test = X[X.SID.isin(test_names)]
+    x_test = x_test.iloc[:, :x_test.shape[1] - 6]
+
+    y_train = X[X.SID.isin(train_names)]
+    y_train = y_train['Research Group']
+
+    y_test = X[X.SID.isin(test_names)]
+    y_test = y_test['Research Group']
+    # Test
+    print(x_train.shape, x_test.shape, y_train.shape, y_test.shape)
+
+    # Split list of dataframes into training/test split and create training /test sets from them.
+    return x_train, x_test, y_train, y_test
+    
 
 def prepare_directory():
     """Creates necessary folders in preparation for data/models saved
@@ -265,6 +290,7 @@ def prepare_directory():
 
 
 def main():
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # Prepares working directory to store deep learning models
     prepare_directory()
     # Loads access keys in from .env file
@@ -292,6 +318,7 @@ def main():
     print("-------------------\nPreprocessing Data\n-------------------")
     print("[*]\tStandardize / Normalize Data")
     normalized_mri_data = normalize_tabular_data(mri_data)
+    normalized_mri_data = normalized_mri_data.replace("AD", 1).replace("CN", 0)
     # Drop columns filled with na/0 values
     normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
 
@@ -302,6 +329,7 @@ def main():
         print(
             "-------------------\nMachine Learning Models\n-------------------"
         )
+        X, y = split_data_train_test(normalised_mri_data, test_size = 0.2)
         linear_regression(X, y)
         linear_regression_pca(X, y)
         linear_regression_svd(X, y)
@@ -311,7 +339,6 @@ def main():
         print("-------------------\nDeep Learning Models\n-------------------")
         keras_network(normalized_mri_data, test_size)
 
-    correlation(normalized_mri_data)
     print("done")
 
 

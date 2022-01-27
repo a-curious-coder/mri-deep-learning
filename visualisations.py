@@ -36,7 +36,7 @@ def plot_loss(loss, val_loss):
     fig.write_html('plots/mri_loss.html')
     return fig
 
-def plot_accuracy(acc, val_acc):
+def plot_accuracy(acc, val_acc, file_name):
     """Plots accuracy statistics for neural net models
 
     Args:
@@ -71,7 +71,7 @@ def plot_accuracy(acc, val_acc):
         title = dict(text = 'Training/Validation Accuracy', x = 0.5)
     )
     fig = go.Figure(data=data, layout = layout)
-    fig.write_html('plots/mri_accuracy.html')
+    fig.write_html(f'plots/{file_name}.html')
     return fig
 
 def plot_all_graphs(loss, val_loss, acc, val_acc):

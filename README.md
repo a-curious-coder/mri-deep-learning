@@ -38,3 +38,9 @@ I've stored the MRI tabular data in Amazon's AWS cloud storage for safe keeping.
 
 Before the data is given to a deep learning model, I need to clean and simplify the data such that there's enough data there to make a classification but not too much it's too much. 
 
+
+## Methodology
+
+### CNN (Convolutional Neural Network)
+#### Kernel
+![kernel](images/kernel.png)

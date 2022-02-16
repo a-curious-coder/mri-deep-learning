@@ -290,6 +290,8 @@ def prepare_directory():
 
 
 def main():
+    """Main
+    """
     os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
     # Prepares working directory to store deep learning models
     prepare_directory()
@@ -299,7 +301,9 @@ def main():
     access_key = os.getenv("ACCESS_KEY")
     secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     test_size = float(os.getenv("TEST_SET_SIZE"))
-
+    machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
+    deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
+    
     # Initialise AWS client to access Tabular Data
     client = boto3.client('s3',
                           aws_access_key_id=access_key,
@@ -321,10 +325,8 @@ def main():
     normalized_mri_data = normalized_mri_data.replace("AD", 1).replace("CN", 0)
     # Drop columns filled with na/0 values
     normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
-
+    print(normalized_mri_data)
     # Models
-    machine_learning = False
-    deep_learning = True
     if machine_learning:
         print(
             "-------------------\nMachine Learning Models\n-------------------"

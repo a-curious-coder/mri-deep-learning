@@ -1,3 +1,15 @@
+# Own additions
+mri_images/
+__pycache__/
+.venv/
+.vscode/
+plots/
+models/
+
+*.csv
+*.html
+*.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -128,7 +140,3 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# Custom
-plots/
-models/
-*.html

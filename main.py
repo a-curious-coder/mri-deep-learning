@@ -1,26 +1,25 @@
-import visualisations as v
+import math
+import os
+import glob
+import random
+from distutils.util import strtobool
+from os.path import exists
+from tabnanny import verbose
 
 import boto3
-import os
-import math
+import nibabel as nib
 import pandas as pd
 import plotly
-import random
 import tensorflow as tf
-
 from dotenv import load_dotenv
-from sklearn.decomposition import PCA, TruncatedSVD
-from sklearn import linear_model
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from tensorflow.keras import models
-from tensorflow.keras import layers
-from os.path import exists
 from scipy.stats import pearsonr
+from sklearn import linear_model
+from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from tensorflow.keras import layers, models
 
-
-def print_data_shape(data):
-    print(f"This dataset has {data.shape[0]} rows and {data.shape[1]} columns")
+import visualisations as v
 
 
 def print_null_values(data):
@@ -136,9 +135,11 @@ def random_forest_pca(X, y):
 
 
 def keras_network(data, test_size):
-    x_train, x_test, y_train, y_test = train_test_split_with_labels(data, test_size=test_size)
+    x_train, x_test, y_train, y_test = train_test_split_with_labels(
+        data, test_size=test_size)
     print("Accuracy\tNodes\tOptimizer\tLoss")
-    settings = [['rmsprop', 'binary_crossentropy', 'accuracy'], ['adam', 'binary_crossentropy', 'accuracy']]
+    settings = [['rmsprop', 'binary_crossentropy', 'accuracy'],
+                ['adam', 'binary_crossentropy', 'accuracy']]
     layer_1_nodes = 32
     layer_2_nodes = 16
     for setting in settings:
@@ -152,7 +153,10 @@ def keras_network(data, test_size):
             with tf.device('/cpu:0'):
                 # Prepare network
                 network = models.Sequential()
-                network.add(layers.Dense(layer_1_nodes, activation='relu', input_shape=(x_train.shape[1], )))
+                network.add(
+                    layers.Dense(layer_1_nodes,
+                                 activation='relu',
+                                 input_shape=(x_train.shape[1], )))
                 network.add(layers.Dense(layer_2_nodes, activation='relu'))
                 network.add(layers.Dense(1, activation='sigmoid'))
 
@@ -166,11 +170,11 @@ def keras_network(data, test_size):
                 partial_y_train = y_train[val_size:]
 
                 history = network.fit(partial_x_train,
-                                    partial_y_train,
-                                    epochs=epochs,
-                                    batch_size=512,
-                                    validation_data=(x_val, y_val),
-                                    verbose = 0)
+                                      partial_y_train,
+                                      epochs=epochs,
+                                      batch_size=512,
+                                      validation_data=(x_val, y_val),
+                                      verbose=0)
                 # Save mri network
                 network.save(f"models/mri_model_{epochs}.tf")
             history_dict = history.history
@@ -179,15 +183,20 @@ def keras_network(data, test_size):
             val_acc = history_dict['val_accuracy']
             # print(f"Accuracy: {history_dict['acc']}")
             # print(f"Validation Accuracy: {history_dict['acc']}")
-            v.plot_accuracy(acc[10:], val_acc[10:], f"mri_accuracy_{epochs}_{layer_1_nodes}_{layer_2_nodes}_{setting[0]}")
+            v.plot_accuracy(
+                acc[10:], val_acc[10:],
+                f"mri_accuracy_{epochs}_{layer_1_nodes}_{layer_2_nodes}_{setting[0]}"
+            )
         else:
             network = models.load_model(f"models/mri_model_{epochs}.tf")
-        predictions = network.evaluate(x_test, y_test, verbose = 0)
-        print(f"[*]\t{predictions[1]*100:.2f}%\t({layer_1_nodes}, {layer_2_nodes})\t{setting[0]}\t{setting[1]}")
+        predictions = network.evaluate(x_test, y_test, verbose=0)
+        print(
+            f"[*]\t{predictions[1]*100:.2f}%\t({layer_1_nodes}, {layer_2_nodes})\t{setting[0]}\t{setting[1]}"
+        )
         # predictions = network.predict(x_test)
 
 
-def split_data_train_test(data, test_size = 0.2):
+def split_data_train_test(data, test_size=0.2):
     """Splits data into train and test dataframes
 
     Args:
@@ -198,7 +207,7 @@ def split_data_train_test(data, test_size = 0.2):
     """
     names = data['SID'].unique()
     random.shuffle(names)
-    size = math.floor(data.shape[0]*test_size)
+    size = math.floor(data.shape[0] * test_size)
     X = data.copy()
     y = data['Research Group'].replace("AD", 1).replace("CN", 0)
     return X, y
@@ -240,7 +249,7 @@ def train_test_split_with_labels(data, test_size=0.2):
 
     # Split list of dataframes into training/test split and create training /test sets from them.
     return x_train, x_test, y_train, y_test
-    
+
 
 def train_test_split_with_labels2(X, y, test_size=0.2):
     """Splits the Tabular MRI data into train/test sets.
@@ -278,7 +287,7 @@ def train_test_split_with_labels2(X, y, test_size=0.2):
 
     # Split list of dataframes into training/test split and create training /test sets from them.
     return x_train, x_test, y_train, y_test
-    
+
 
 def prepare_directory():
     """Creates necessary folders in preparation for data/models saved
@@ -289,29 +298,16 @@ def prepare_directory():
         os.mkdir("models")
 
 
-def main():
-    """Main
-    """
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    # Prepares working directory to store deep learning models
-    prepare_directory()
-    # Loads access keys in from .env file
-    load_dotenv()
-    # Load in environment variables
-    access_key = os.getenv("ACCESS_KEY")
-    secret_access_key = os.getenv("SECRET_ACCESS_KEY")
-    test_size = float(os.getenv("TEST_SET_SIZE"))
-    machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
-    deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
-    
-    # Initialise AWS client to access Tabular Data
-    client = boto3.client('s3',
-                          aws_access_key_id=access_key,
-                          aws_secret_access_key=secret_access_key)
+def cls():
+    # clear the terminal before running
+    os.system("cls" if os.name == "nt" else "clear")
 
+
+def tabular_data(client):
     print("-------------------\nLoad Data\n-------------------")
     mri_data = get_tabular_data(client)
-    print("-------------------\nExploratory Data Analysis\n-------------------")
+    print(
+        "-------------------\nExploratory Data Analysis\n-------------------")
     print_data_shape(mri_data)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
     print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
@@ -331,7 +327,7 @@ def main():
         print(
             "-------------------\nMachine Learning Models\n-------------------"
         )
-        X, y = split_data_train_test(normalised_mri_data, test_size = 0.2)
+        X, y = split_data_train_test(normalised_mri_data, test_size=0.2)
         linear_regression(X, y)
         linear_regression_pca(X, y)
         linear_regression_svd(X, y)
@@ -342,6 +338,107 @@ def main():
         keras_network(normalized_mri_data, test_size)
 
     print("done")
+
+
+def filter_data(filename='refined_data.csv'):
+    if not exists(filename):
+        # Load in csv data corresponding to images
+        data = pd.read_csv('adni_all_aibl_all_oasis_all_ixi_all.csv')
+        # Filter data to AIBL project
+        data = data[data['PROJECT'] == "AIBL"]
+        # Filter data to scan number 1
+        data = data[data['SCAN_NUM'] == 1]
+        data.to_csv(filename, index=False)
+    return pd.read_csv(filename)
+
+
+def image_data(client):
+    """Image data classification
+
+    Args:
+        client (botocore.client.S3): API client to access image data
+    """
+    data = filter_data()
+    data = handle_null_values(data)
+    # data.to_csv('refined_data.csv', index=False)
+    # del data['PROJECT']
+    # del data['SCAN_NUM']
+    data['Path'] = [txt.split("\\")[-1] for txt in data['Path']]
+    data.to_csv("refined_data.csv", index=False)
+    print(data.head())
+    os.chdir("mri_images/")
+    dirs = [item for item in os.listdir() if os.path.isdir(item)]
+    patients = data[data['Path'].isin(dirs)]
+    classifications = [label for label in patients['GROUP']]
+    images = []
+    for folder in dirs:
+        for file in os.listdir(folder):
+            if file.endswith(".nii"):
+                images.append(nib.load(folder + "/" + file))
+
+    image_shapes = [image.shape for image in images]
+    image_details = pd.DataFrame(
+        {"name": dirs, "image": image_shapes, "classification": classifications})
+    print(image_details)
+
+
+def handle_null_values(data: pd.DataFrame) -> pd.DataFrame:
+    """Handles null values from data
+
+    Args:
+        data (pd.DataFrame): original data
+
+    Returns:
+        pd.DataFrame: identifies and removes null/nan values
+    """
+    null_val_per_col = data.isnull().sum().to_frame(
+        name='counts').query('counts > 0')
+    print(null_val_per_col)
+    # NOTE: Null value quantity is same as max number of rows
+    # NOTE: Thus, delete whole columns instead
+    # Get column names
+    columns = null_val_per_col.index.tolist()
+    # Drop columns with null values
+    data.drop(columns, axis=1, inplace=True)
+    return data
+
+
+def dprint(text):
+    if verbose:
+        print(text)
+
+
+def main():
+    """Main"""
+    global verbose
+    verbose = False
+    cls()
+    print("[*]\tAlzheimer's Classification Project")
+    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+    # Prepares working directory to store deep learning models
+    prepare_directory()
+    # Loads access keys in from .env file
+    load_dotenv()
+    # Load in environment variables
+    access_key = os.getenv("ACCESS_KEY")
+    secret_access_key = os.getenv("SECRET_ACCESS_KEY")
+    test_size = float(os.getenv("TEST_SET_SIZE"))
+    machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
+    deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
+
+    tabular = strtobool(os.getenv("TABULAR_DATA"))
+    image = strtobool(os.getenv("IMAGE_DATA"))
+    # Initialise AWS client to access Tabular Data
+    client = boto3.client('s3',
+                          aws_access_key_id=access_key,
+                          aws_secret_access_key=secret_access_key)
+
+    print("[*]\tClient initialised")
+    if tabular:
+        tabular_data(client)
+
+    if image:
+        image_data(client)
 
 
 if __name__ == "__main__":

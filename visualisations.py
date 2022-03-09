@@ -1,5 +1,6 @@
-import plotly.graph_objs as go
+from plotly import graph_objs as go
 from plotly.subplots import make_subplots
+
 
 def verify_import():
     print("[*]\tvisualisations.py successfully imported")

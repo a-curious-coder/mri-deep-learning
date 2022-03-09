@@ -6,6 +6,7 @@ __pycache__/
 plots/
 models/
 
+*.env
 *.csv
 *.html
 *.DS_Store
@@ -114,7 +115,6 @@ celerybeat.pid
 *.sage.py
 
 # Environments
-.env
 .venv
 env/
 venv/

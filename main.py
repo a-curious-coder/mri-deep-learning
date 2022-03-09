@@ -1,6 +1,6 @@
+import glob
 import math
 import os
-import glob
 import random
 from distutils.util import strtobool
 from os.path import exists
@@ -19,7 +19,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models
 
-import visualisations as v
+from visualisations import *
+
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def print_null_values(data):
@@ -183,7 +186,7 @@ def keras_network(data, test_size):
             val_acc = history_dict['val_accuracy']
             # print(f"Accuracy: {history_dict['acc']}")
             # print(f"Validation Accuracy: {history_dict['acc']}")
-            v.plot_accuracy(
+            plot_accuracy(
                 acc[10:], val_acc[10:],
                 f"mri_accuracy_{epochs}_{layer_1_nodes}_{layer_2_nodes}_{setting[0]}"
             )
@@ -289,25 +292,15 @@ def train_test_split_with_labels2(X, y, test_size=0.2):
     return x_train, x_test, y_train, y_test
 
 
-def prepare_directory():
-    """Creates necessary folders in preparation for data/models saved
-    """
-    if not os.path.isdir("plots"):
-        os.mkdir("plots")
-    if not os.path.isdir("models"):
-        os.mkdir("models")
-
-
-def cls():
-    # clear the terminal before running
-    os.system("cls" if os.name == "nt" else "clear")
-
-
 def tabular_data(client):
-    print("-------------------\nLoad Data\n-------------------")
+    """Handles tabular MRI data
+
+    Args:
+        client (botocore.client.S3): API client to access tabular data
+    """
+    printt("Load Data")
     mri_data = get_tabular_data(client)
-    print(
-        "-------------------\nExploratory Data Analysis\n-------------------")
+    printt("Exploratory Data Analysis\n")
     print_data_shape(mri_data)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
     print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
@@ -315,7 +308,7 @@ def tabular_data(client):
     if first_only == True:
         # Filters data to only include first row instance of each unique SID
         mri_data = mri_data.groupby('SID').first()
-    print("-------------------\nPreprocessing Data\n-------------------")
+    printt("Preprocessing Data")
     print("[*]\tStandardize / Normalize Data")
     normalized_mri_data = normalize_tabular_data(mri_data)
     normalized_mri_data = normalized_mri_data.replace("AD", 1).replace("CN", 0)
@@ -324,9 +317,7 @@ def tabular_data(client):
     print(normalized_mri_data)
     # Models
     if machine_learning:
-        print(
-            "-------------------\nMachine Learning Models\n-------------------"
-        )
+        printt("Machine Learning Models")
         X, y = split_data_train_test(normalised_mri_data, test_size=0.2)
         linear_regression(X, y)
         linear_regression_pca(X, y)
@@ -334,22 +325,56 @@ def tabular_data(client):
         random_forest_pca(X, y)
 
     if deep_learning:
-        print("-------------------\nDeep Learning Models\n-------------------")
+        printt("Deep Learning Models")
         keras_network(normalized_mri_data, test_size)
 
     print("done")
 
 
-def filter_data(filename='refined_data.csv'):
-    if not exists(filename):
-        # Load in csv data corresponding to images
-        data = pd.read_csv('adni_all_aibl_all_oasis_all_ixi_all.csv')
-        # Filter data to AIBL project
-        data = data[data['PROJECT'] == "AIBL"]
-        # Filter data to scan number 1
-        data = data[data['SCAN_NUM'] == 1]
-        data.to_csv(filename, index=False)
-    return pd.read_csv(filename)
+def filter_original_data(data: pd.DataFrame) -> pd.DataFrame:
+    """Filters full data-set to records we want
+
+    Args:
+        data (pd.DataFrame): full data-set
+
+    Returns:
+        pd.DataFrame: filtered data-set
+    """
+    # Filter data to AIBL project
+    data = data[data['PROJECT'] == "AIBL"]
+    # Filter data to scan number 1
+    data = data[data['SCAN_NUM'] == 1]
+    return data
+
+
+def image_data_eda(data: pd.DataFrame):
+    """Exploratory Data Analysis on dataframe
+
+    Args:
+        data (pd.DataFrame): mri data
+    """
+    dprint(data.info())
+    dprint(data.describe())
+    data.describe().to_csv("dataset-description.csv", index=True)
+
+
+def load_mri_scans(dirs: list) -> list:
+    """Loads in mri scans
+
+    Args:
+        list: list of mri scan patient folders
+
+    Returns:
+        list: mri scans
+    """
+    images = []
+    # Load each patient's image to list
+    for folder in dirs:
+        for file in os.listdir(mri_image_dir + folder):
+            if file.endswith(".nii"):
+                images.append(
+                    nib.load(mri_image_dir + "/" + folder + "/" + file))
+    return images
 
 
 def image_data(client):
@@ -358,27 +383,61 @@ def image_data(client):
     Args:
         client (botocore.client.S3): API client to access image data
     """
-    data = filter_data()
-    data = handle_null_values(data)
-    # data.to_csv('refined_data.csv', index=False)
-    # del data['PROJECT']
-    # del data['SCAN_NUM']
-    data['Path'] = [txt.split("\\")[-1] for txt in data['Path']]
-    data.to_csv("refined_data.csv", index=False)
-    print(data.head())
-    os.chdir("mri_images/")
-    dirs = [item for item in os.listdir() if os.path.isdir(item)]
-    patients = data[data['Path'].isin(dirs)]
-    classifications = [label for label in patients['GROUP']]
-    images = []
-    for folder in dirs:
-        for file in os.listdir(folder):
-            if file.endswith(".nii"):
-                images.append(nib.load(folder + "/" + file))
+    if not exists("refined_data.csv"):
+        dprint("[*]\tRefining big data-frame to SCAN_NUM: 1, PROJECT: AIBL")
+        # Load in original data
+        data = pd.read_csv("adni_all_aibl_all_oasis_all_ixi_all.csv")
+        # Filter data by scan number and study
+        data = filter_original_data(data)
+        # Perform eda
+        image_data_eda(data)
+        # Remove rows/columns with null values
+        data = handle_null_values(data)
 
-    image_shapes = [image.shape for image in images]
-    image_details = pd.DataFrame(
-        {"name": dirs, "image": image_shapes, "classification": classifications})
+        # NOTE: EDA says max age is 1072, remove ages more than 125
+        # Remove rows where age is less than 125
+        data = data[data['AGE'] < 125]
+
+        # Remove irrelevant columns to this data
+        del data['PROJECT']
+        del data['SCAN_NUM']
+
+        # Extract patient ids from each directory path
+        patients = [txt.split("\\")[-1] for txt in data['Path']]
+        # Drop path column
+        del data['Path']
+        # Replace path values with patient ids
+        data['PATIENT_ID'] = patients
+        data.to_csv("refined_data.csv", index=False)
+
+    # If we haven't made an image details file
+    if not exists('image_details.csv'):
+        dprint("[*]\tGenerating details associated with image")
+        data = pd.read_csv("refined_data.csv")
+
+        # Get all folder/patient names in current directory
+        dirs = [item for item in os.listdir(
+            mri_image_dir) if os.path.isdir(mri_image_dir + item)]
+        # Using patient names from directory's folder names, filter dataframe
+        patients = data[data['PATIENT_ID'].isin(dirs)]
+        # Get classification results for each patient in dataframe
+        classifications = [label for label in patients['GROUP']]
+
+        # Load in MRI Scans
+        # NOTE: Multiple frames per mri scan (Typically 256)
+        images = load_mri_scans(dirs)
+
+        # Image shapes to evidence image is loaded
+        image_shapes = [image.shape for image in images]
+
+        # new dataframe for images to corresponding labels
+        image_details = pd.DataFrame(
+            {"name": dirs, "image": image_shapes, "classification": classifications})
+
+        # Save image details dataframe to file
+        image_details.to_csv('image_details.csv', index=False)
+
+    image_details = pd.read_csv('image_details.csv')
     print(image_details)
 
 
@@ -403,35 +462,78 @@ def handle_null_values(data: pd.DataFrame) -> pd.DataFrame:
     return data
 
 
-def dprint(text):
+def prepare_directory():
+    """Creates necessary folders in preparation for data/models saved
+    """
+    if not os.path.isdir("plots"):
+        os.mkdir("plots")
+    if not os.path.isdir("models"):
+        os.mkdir("models")
+
+
+def cls():
+    # clear the terminal before running
+    os.system("cls" if os.name == "nt" else "clear")
+
+
+def dprint(text: str):
+    """Prints text during verbose mode
+
+    Args:
+        text (str): text
+    """
     if verbose:
         print(text)
 
 
-def main():
-    """Main"""
+def printt(title):
+    print("------------------------------------------------"
+          f"\n\t{title}\n"
+          "------------------------------------------------")
+
+
+def initialise_settings():
+    """Loads environment variables to settings
+    """
+    global test_size
+    global machine_learning
+    global deep_learning
+    global tabular
+    global image
+    global client
+    global mri_image_dir
     global verbose
-    verbose = False
-    cls()
-    print("[*]\tAlzheimer's Classification Project")
-    os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-    # Prepares working directory to store deep learning models
-    prepare_directory()
+
     # Loads access keys in from .env file
     load_dotenv()
+
     # Load in environment variables
-    access_key = os.getenv("ACCESS_KEY")
-    secret_access_key = os.getenv("SECRET_ACCESS_KEY")
+    verbose = strtobool(os.getenv("VERBOSE"))
+    mri_image_dir = os.getenv("MRI_IMAGES_DIRECTORY")
+
     test_size = float(os.getenv("TEST_SET_SIZE"))
     machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
     deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
 
     tabular = strtobool(os.getenv("TABULAR_DATA"))
     image = strtobool(os.getenv("IMAGE_DATA"))
+
+    access_key = os.getenv("ACCESS_KEY")
+    secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     # Initialise AWS client to access Tabular Data
     client = boto3.client('s3',
                           aws_access_key_id=access_key,
                           aws_secret_access_key=secret_access_key)
+
+
+def main():
+    """Main"""
+    cls()
+    printt("Alzheimer's Classification Project")
+    # Initialises and loads environment variable settings
+    initialise_settings()
+    # Prepares working directory to store deep learning models
+    prepare_directory()
 
     print("[*]\tClient initialised")
     if tabular:

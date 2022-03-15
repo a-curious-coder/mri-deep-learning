@@ -2,6 +2,7 @@ import glob
 import math
 import os
 import random
+import shutil
 from distutils.util import strtobool
 from os.path import exists
 from tabnanny import verbose
@@ -9,18 +10,19 @@ from tabnanny import verbose
 import boto3
 import nibabel as nib
 import pandas as pd
-import plotly
+from sklearn.metrics import accuracy_score
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.svm import SVC
 import tensorflow as tf
 from dotenv import load_dotenv
 from scipy.stats import pearsonr
-from sklearn import linear_model
 from sklearn.decomposition import PCA, TruncatedSVD
-from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models
 
 from visualisations import *
-
+from model import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -47,7 +49,7 @@ def normalize_tabular_data(mri_data):
     Returns:
         pd.DataFrame: Normalized MRI data
     """
-    avoid = ["Study", "SID", "total CNR", "Gender", "Research Group", "Age"]
+    avoid = ["Gender", "Research Group", "Age"]
     # apply normalization techniques
     for column in mri_data.columns:
         if column not in avoid:
@@ -79,62 +81,18 @@ def get_tabular_data(client):
     return pd.read_csv(response.get("Body"))
 
 
-def linear_regression(X, y):
-    """Linear Regression model trained given mri data; prints accuracy results based on test sets
-
-    Args:
-        X ([type]): MRI dataset
-        y ([type]): MRI dataset labels
-    """
-    reg = linear_model.LinearRegression()
-    x_train, x_test, y_train, y_test = train_test_split(X,
-                                                        y,
-                                                        test_size=0.2,
-                                                        random_state=4)
-    reg.fit(x_train, y_train)
-    print(f"[*]\t{reg.score(x_test, y_test)*100:.2f}%\tLinear Regression")
-
-
-def linear_regression_pca(X, y):
-    pca = PCA(n_components=190, whiten='True')
-    pca_x = pca.fit(X).transform(X)
-    reg = linear_model.LinearRegression()
-    x_train, x_test, y_train, y_test = train_test_split(pca_x,
-                                                        y,
-                                                        test_size=0.2,
-                                                        random_state=4)
-    reg.fit(x_train, y_train)
-    print(f"[*]\t{reg.score(x_test, y_test)*100:.2f}%\tLinear Regression PCA")
-
-
-def linear_regression_svd(X, y):
-    svd = TruncatedSVD(n_components=190)
-    x = svd.fit(X).transform(X)
-    reg = linear_model.LinearRegression()
-    x_train, x_test, y_train, y_test = train_test_split(x,
-                                                        y,
-                                                        test_size=0.2,
-                                                        random_state=4)
-    reg.fit(x_train, y_train)
-    print(f"[*]\t{reg.score(x_test, y_test)*100:.2f}%\tLinear Regression SVD")
-
-
-def random_forest_pca(X, y):
-    pca = PCA(n_components=190, whiten='True')
-    pca_x = pca.fit(X).transform(X)
+def random_forest(x_train, x_test, y_train, y_test):
+    # Initialise classifier
     rf = RandomForestClassifier(n_estimators=50)
-    x_train, x_test, y_train, y_test = train_test_split(pca_x,
-                                                        y,
-                                                        test_size=0.2,
-                                                        random_state=4)
+
+    # Train random forest model
     rf.fit(x_train, y_train)
+
+    # Predict labels
     pred = rf.predict(x_test)
-    labels = y_test.values
-    count = 0
-    for i in range(len(pred)):
-        if pred[i] == labels[i]:
-            count = count + 1
-    print(f"[*]\t{count / float(len(pred))*100:.2f}%\tRandom Forest PCA")
+
+    # Return actual and predicted labels
+    return y_test, pred
 
 
 def keras_network(data, test_size):
@@ -208,11 +166,8 @@ def split_data_train_test(data, test_size=0.2):
     Returns:
         pd.DataFrame: Train and Test sets
     """
-    names = data['SID'].unique()
-    random.shuffle(names)
-    size = math.floor(data.shape[0] * test_size)
-    X = data.copy()
-    y = data['Research Group'].replace("AD", 1).replace("CN", 0)
+    X = data.drop(['Research Group'], axis=1)
+    y = data['Research Group'].tolist()
     return X, y
 
 
@@ -300,35 +255,67 @@ def tabular_data(client):
     """
     printt("Load Data")
     mri_data = get_tabular_data(client)
-    printt("Exploratory Data Analysis\n")
-    print_data_shape(mri_data)
+    printt("Exploratory Data Analysis")
+    dprint(mri_data.shape)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
     print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
     first_only = False
-    if first_only == True:
+    if first_only:
         # Filters data to only include first row instance of each unique SID
         mri_data = mri_data.groupby('SID').first()
+
     printt("Preprocessing Data")
+    df = mri_data.select_dtypes(exclude=['float64', 'int'])
+    mri_data.drop(["Study", "SID", "total CNR"], axis=1, inplace=True)
     print("[*]\tStandardize / Normalize Data")
     normalized_mri_data = normalize_tabular_data(mri_data)
+
+    # Encode labels and gender
     normalized_mri_data = normalized_mri_data.replace("AD", 1).replace("CN", 0)
+    normalized_mri_data['Gender'] = normalized_mri_data['Gender'].replace(
+        "F", 0).replace("M", 1)
+    # normalized_mri_data = normalized_mri_data[normalized_mri_data['Gender'] == 1]
     # Drop columns filled with na/0 values
     normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
-    print(normalized_mri_data)
+
+    # Data/Label split
+    X, y = split_data_train_test(normalized_mri_data, test_size=TEST_SIZE)
+
+    # Train/Test split
+    x_train, x_test, y_train, y_test = train_test_split(X,
+                                                        y,
+                                                        test_size=TEST_SIZE,
+                                                        random_state=RANDOM_STATE)
+    # Dimensionality
+    if PCA:
+        pca = PCA(n_components=190, whiten='True')
+        X = pca.fit(X).transform(X)
+    elif SVD:
+        svd = TruncatedSVD(n_components=190)
+        X = svd.fit(X).transform(X)
+
+    models = [RandomForestClassifier(), DecisionTreeClassifier(),
+              SVC(kernel="rbf")]
+    model_names = ["Random Forest", "Decision Tree", "Support Vector Machine"]
+
     # Models
+    printt("Machine Learning Models")
     if machine_learning:
-        printt("Machine Learning Models")
-        X, y = split_data_train_test(normalised_mri_data, test_size=0.2)
-        linear_regression(X, y)
-        linear_regression_pca(X, y)
-        linear_regression_svd(X, y)
-        random_forest_pca(X, y)
+        for name, classifier in zip(model_names, models):
+            model = Model(x_train, x_test, y_train, y_test,
+                          classifier, name)
+
+            model.train_predict()
+            # Display results
+            model.print_metrics()
+
+            model.balance_dataset()
+            # Plot Confusion matrix
+            model.plot_cm()
 
     if deep_learning:
         printt("Deep Learning Models")
-        keras_network(normalized_mri_data, test_size)
-
-    print("done")
+        keras_network(normalized_mri_data, TEST_SIZE)
 
 
 def filter_original_data(data: pd.DataFrame) -> pd.DataFrame:
@@ -361,11 +348,15 @@ def image_data_eda(data: pd.DataFrame):
 def load_mri_scans(dirs: list) -> list:
     """Loads in mri scans
 
-    Args:
-        list: list of mri scan patient folders
+    Parameters
+    ----------
+    dirs : list
+        Directories
 
-    Returns:
-        list: mri scans
+    Returns
+    -------
+    list
+        MRI Scans
     """
     images = []
     # Load each patient's image to list
@@ -383,6 +374,7 @@ def image_data(client):
     Args:
         client (botocore.client.S3): API client to access image data
     """
+
     if not exists("refined_data.csv"):
         dprint("[*]\tRefining big data-frame to SCAN_NUM: 1, PROJECT: AIBL")
         # Load in original data
@@ -408,6 +400,7 @@ def image_data(client):
         del data['Path']
         # Replace path values with patient ids
         data['PATIENT_ID'] = patients
+
         data.to_csv("refined_data.csv", index=False)
 
     # If we haven't made an image details file
@@ -463,15 +456,17 @@ def handle_null_values(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def prepare_directory():
-    """Creates necessary folders in preparation for data/models saved
-    """
+    """Creates necessary folders in preparation for data/models saved"""
     if not os.path.isdir("plots"):
         os.mkdir("plots")
+    if not os.path.isdir("plots/confusion_matrices"):
+        os.mkdir("plots/confusion_matrices")
     if not os.path.isdir("models"):
         os.mkdir("models")
 
 
 def cls():
+    """Clear terminal"""
     # clear the terminal before running
     os.system("cls" if os.name == "nt" else "clear")
 
@@ -487,15 +482,23 @@ def dprint(text: str):
 
 
 def printt(title):
-    print("------------------------------------------------"
-          f"\n\t{title}\n"
-          "------------------------------------------------")
+    """Print title
+
+    Args:
+        title (str): title
+    """
+    dprint("------------------------------------------------"
+           f"\n\t{title}\n"
+           "------------------------------------------------")
 
 
 def initialise_settings():
-    """Loads environment variables to settings
-    """
-    global test_size
+    """Loads environment variables to settings"""
+    global TEST_SIZE
+    global RANDOM_STATE
+    global PCA
+    global SVD
+
     global machine_learning
     global deep_learning
     global tabular
@@ -511,10 +514,14 @@ def initialise_settings():
     verbose = strtobool(os.getenv("VERBOSE"))
     mri_image_dir = os.getenv("MRI_IMAGES_DIRECTORY")
 
-    test_size = float(os.getenv("TEST_SET_SIZE"))
+    TEST_SIZE = float(os.getenv("TEST_SIZE"))
+    RANDOM_STATE = int(os.getenv("RANDOM_STATE"))
     machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
     deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
 
+    # Dimensionality Reduction
+    PCA = strtobool(os.getenv("PCA"))
+    SVD = strtobool(os.getenv("SVD"))
     tabular = strtobool(os.getenv("TABULAR_DATA"))
     image = strtobool(os.getenv("IMAGE_DATA"))
 
@@ -530,9 +537,7 @@ def main():
     """Main"""
     cls()
     printt("Alzheimer's Classification Project")
-    # Initialises and loads environment variable settings
     initialise_settings()
-    # Prepares working directory to store deep learning models
     prepare_directory()
 
     print("[*]\tClient initialised")

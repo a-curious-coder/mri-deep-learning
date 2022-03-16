@@ -6,11 +6,9 @@ import shutil
 from distutils.util import strtobool
 from os.path import exists
 from tabnanny import verbose
-from tkinter import NORMAL
 import itertools
 
 import boto3
-import nibabel as nib
 import pandas as pd
 from sklearn.metrics import accuracy_score
 from sklearn.ensemble import RandomForestClassifier
@@ -530,7 +528,7 @@ def dprint(text: str):
     Args:
         text (str): text
     """
-    if verbose:
+    if VERBOSE:
         print(text)
 
 
@@ -559,14 +557,14 @@ def initialise_settings():
     global image
     global client
     global mri_image_dir
-    global verbose
+    global VERBOSE
     global PREPROCESSING
     global TEST_ALL_CONFIGS
     # Loads access keys in from .env file
     load_dotenv()
 
     # Load in environment variables
-    verbose = strtobool(os.getenv("VERBOSE"))
+    VERBOSE = strtobool(os.getenv("VERBOSE"))
     mri_image_dir = os.getenv("MRI_IMAGES_DIRECTORY")
 
     NORMALISATION = strtobool(os.getenv("NORMALISATION"))

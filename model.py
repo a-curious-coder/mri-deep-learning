@@ -1,3 +1,4 @@
+from os.path import exists
 from plotly import express as px, graph_objs as go
 from sklearn import metrics
 from sklearn.metrics import (
@@ -43,21 +44,12 @@ class Model:
         self.name = name
         self.file_name()
 
-    def initialise_optimal_parameters(self):
-        pass
-
-    def balance_dataset(self):
-        """Balances dataset labels"""
-        smote = SMOTE(sampling_strategy="minority", n_jobs=-1)
-        self.x_train, self.y_train = smote.fit_resample(
-            self.x_train, self.y_train)
-
-    def train_predict(self, grid=None):
-        """Trains classification model and predicts labels
-
-        Args:
-            grid (dict, optional): _description_. Defaults to None.
-        """
+    def initialise_optimal_parameters(self, grid = None):
+        # TODO: If there aren't pre-existing optimal parameter files
+        if exists(f"optimal_parameters/{f_name}_parms.csv"):
+            self.parms = pd.read_csv(f"optimal_parameters/{f_name}_parms.csv")
+            
+        # NOTE: Executes cross validation to find optimal parameters for model
 
         # Only apply RandomSearch if pass as relevant argument
         if grid is not None:
@@ -68,6 +60,19 @@ class Model:
                                             verbose=2,
                                             random_state=42,
                                             n_jobs=-1)
+
+    def balance_dataset(self):
+        """Balances dataset labels"""
+        smote = SMOTE(sampling_strategy="minority", n_jobs=-1)
+        self.x_train, self.y_train = smote.fit_resample(
+            self.x_train, self.y_train)
+
+    def train_predict(self):
+        """Trains classification model and predicts labels
+
+        Args:
+            grid (dict, optional): _description_. Defaults to None.
+        """
 
         # Fit features to targets
         self.model.fit(self.x_train, self.y_train)

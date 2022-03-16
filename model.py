@@ -13,16 +13,12 @@ from sklearn.metrics import (
 from sklearn.model_selection import RandomizedSearchCV
 from imblearn.over_sampling import SMOTE
 
-# import matplotlib.pyplot as plt
-
-
-#
-
 
 class Model:
     """Class Encapsulating classifier functions"""
 
-    def __init__(self, x_train, x_test, y_train, y_test, model, name):
+    def __init__(self, preprocessing, x_train, x_test, y_train, y_test, model,
+                 name):
         """Initialisation function
 
         Args:
@@ -35,6 +31,7 @@ class Model:
         """
 
         # Initialise environment variable settings
+        self.PREPROCESSING = preprocessing
 
         # Training/Test sets
         self.x_train = x_train
@@ -45,6 +42,9 @@ class Model:
         self.model = model
         self.name = name
         self.file_name()
+
+    def initialise_optimal_parameters(self):
+        pass
 
     def balance_dataset(self):
         """Balances dataset labels"""
@@ -61,8 +61,13 @@ class Model:
 
         # Only apply RandomSearch if pass as relevant argument
         if grid is not None:
-            self.model = RandomizedSearchCV(estimator=self.model, param_distributions=grid,
-                                            n_iter=100, cv=5, verbose=2, random_state=42, n_jobs=-1)
+            self.model = RandomizedSearchCV(estimator=self.model,
+                                            param_distributions=grid,
+                                            n_iter=100,
+                                            cv=5,
+                                            verbose=2,
+                                            random_state=42,
+                                            n_jobs=-1)
 
         # Fit features to targets
         self.model.fit(self.x_train, self.y_train)
@@ -71,8 +76,8 @@ class Model:
         self.predictions = self.model.predict(self.x_test)
 
         # Accuracy
-        self.accuracy = round(accuracy_score(
-            self.y_test, self.predictions)*100, 2)
+        self.accuracy = round(
+            accuracy_score(self.y_test, self.predictions) * 100, 2)
         self.roc_auc = round(roc_auc_score(self.y_test, self.predictions), 2)
         self.log_loss = round(log_loss(self.y_test, self.predictions), 2)
 
@@ -80,7 +85,6 @@ class Model:
         """Function to display multiple metrics after the model had been trained"""
         print(self.name)
         print(f"[*]\t{self.accuracy}%\t{self.roc_auc}\t{self.log_loss}")
-        self.save_metrics()
 
     def save_metrics(self):
         """Saves metrics to file"""
@@ -88,12 +92,14 @@ class Model:
         # Open a file with access mode 'a'
         file_object = open('model_metrics.csv', 'a')
         my_string = ','.join(map(str, all_metrics))
-        file_object.write(my_string)
+        file_object.write(my_string + ",")
+        preprocessing = ','.join(map(str, self.PREPROCESSING))
+        file_object.write(preprocessing)
         file_object.write('\n')
         # Close the file
         file_object.close()
 
-    def plot_precision_recall(self, f_name=None):
+    def plot_precision_recall(self):
         """Function to display and create plot representing precision and recall of trained model
 
         Args:
@@ -101,10 +107,7 @@ class Model:
         """
 
         PrecisionRecallDisplay.from_predictions(self.y_test, self.predictions)
-
-        # If no Filename Provided, Do not create PNG
-        if f_name is not None:
-            plt.savefig(f_name)
+        plt.savefig(self.f_name)
         plt.show()
 
     def plot_cm(self):
@@ -117,35 +120,32 @@ class Model:
         labels = ["Alzheimer's", "Healthy"]
         cm = metrics.confusion_matrix(self.y_test, self.predictions)
 
-        data = go.Heatmap(
-            z=cm,
-            y=labels,
-            x=labels,
-            hovertemplate="<br>".join(
-                [
-                    "Predicted: <b>%{x}</b>",
-                    "Actual: <b>%{y}</b>",
-                    "Occurences %{z}",
-                    "<extra></extra>",
-                ]
-            ),
-            colorscale="rdylgn",
-            showscale=False
-        )
+        data = go.Heatmap(z=cm,
+                          y=labels,
+                          x=labels,
+                          hovertemplate="<br>".join([
+                              "Predicted: <b>%{x}</b>",
+                              "Actual: <b>%{y}</b>",
+                              "Occurences %{z}",
+                              "<extra></extra>",
+                          ]),
+                          colorscale="rdylgn",
+                          showscale=False)
         annotations = []
         for i, row in enumerate(cm):
             for j, value in enumerate(row):
-                annotations.append(
-                    {
-                        "x": labels[j],
-                        "y": labels[i],
-                        "text": str(value),
-                        "font": {"color": "black", "size": 20},
-                        "xref": "x1",
-                        "yref": "y1",
-                        "showarrow": False,
-                    }
-                )
+                annotations.append({
+                    "x": labels[j],
+                    "y": labels[i],
+                    "text": str(value),
+                    "font": {
+                        "color": "black",
+                        "size": 20
+                    },
+                    "xref": "x1",
+                    "yref": "y1",
+                    "showarrow": False,
+                })
         layout = go.Layout(
             title=dict(text=plot_title, x=0.5),
             xaxis=dict(title="Predicted"),
@@ -159,8 +159,8 @@ class Model:
 
     # MISC
     def file_name(self):
+        """generate file name from name"""
         # name to lower case
         self.f_name = self.name.lower()
-
         # replace spaces with underscores
         self.f_name = self.f_name.replace(" ", "_")

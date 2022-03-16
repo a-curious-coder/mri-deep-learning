@@ -6,6 +6,8 @@ import shutil
 from distutils.util import strtobool
 from os.path import exists
 from tabnanny import verbose
+from tkinter import NORMAL
+import itertools
 
 import boto3
 import nibabel as nib
@@ -20,7 +22,7 @@ from scipy.stats import pearsonr
 from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models
-
+from sklearn.naive_bayes import GaussianNB, MultinomialNB
 from visualisations import *
 from model import *
 
@@ -79,20 +81,6 @@ def get_tabular_data(client):
     response = client.get_object(Bucket='mri-deep-learning',
                                  Key='data/tabular/adni_ixi_rois_data_raw.csv')
     return pd.read_csv(response.get("Body"))
-
-
-def random_forest(x_train, x_test, y_train, y_test):
-    # Initialise classifier
-    rf = RandomForestClassifier(n_estimators=50)
-
-    # Train random forest model
-    rf.fit(x_train, y_train)
-
-    # Predict labels
-    pred = rf.predict(x_test)
-
-    # Return actual and predicted labels
-    return y_test, pred
 
 
 def keras_network(data, test_size):
@@ -247,15 +235,98 @@ def train_test_split_with_labels2(X, y, test_size=0.2):
     return x_train, x_test, y_train, y_test
 
 
+def mandatory_preprocessing(data):
+    # Drop study and sid strings
+    data.drop(["Study", "SID"], axis=1, inplace=True)
+
+    # Encode labels and gender
+    data['Research Group'] = data['Research Group'].replace("AD", 1).replace(
+        "CN", 0)
+    data['Gender'] = data['Gender'].replace("F", 0).replace("M", 1)
+    return data
+
+
+def test_model(mri_data, preprocessing_mod=None):
+    """Tests machine learning classification model
+
+    Args:
+        mri_data (_type_): _description_
+        preprocessing_mod (_type_, optional): _description_. Defaults to None.
+    """
+
+    if preprocessing_mod is not None:
+        global PREPROCESSING
+        PREPROCESSING = preprocessing_mod
+
+    # Data/Label split
+    X, y = split_data_train_test(mri_data, test_size=TEST_SIZE)
+
+    # Dimensionality reduction
+    if PCA:
+        pca = PCA(n_components=190, whiten='True')
+        X = pca.fit(X).transform(X)
+    elif SVD:
+        svd = TruncatedSVD(n_components=190)
+        X = svd.fit(X).transform(X)
+
+    # Train/Test split
+    x_train, x_test, y_train, y_test = train_test_split(
+        X, y, test_size=TEST_SIZE, random_state=RANDOM_STATE)
+
+    # all_configurations()
+    models = [
+        RandomForestClassifier(),
+        DecisionTreeClassifier(),
+        SVC(C=1000, gamma=0.01),
+        GaussianNB(),
+        MultinomialNB()
+    ]
+    model_names = [
+        "Random Forest", "Decision Tree", "Support Vector Machine",
+        "Naive Bayes", "MN Naive Bayes"
+    ]
+
+    # Models
+    print_title("Machine Learning Models")
+    for name, classifier in zip(model_names, models):
+        model = Model(PREPROCESSING, x_train, x_test, y_train, y_test,
+                      classifier, name)
+
+        model.initialise_optimal_parameters()
+        # Train model and predict labels
+        model.train_predict()
+
+        # Save results
+        model.save_metrics()
+
+        if BALANCE_TRAINING:
+            model.balance_dataset()
+
+        # Plot Confusion matrix
+        model.plot_cm()
+
+
+def all_configurations(mri_data):
+    """Iterates through all permutations of possible pre-processing settings for each model
+
+    Args:
+        mri_data (pd.DataFrame): Tabular MRI data
+    """
+    settings_perms = list(itertools.product([False, True], repeat=4))
+    dprint(f"[*]\t{len(settings_perms)} tests")
+    for settings in settings_perms:
+        test_model(mri_data, settings)
+
+
 def tabular_data(client):
     """Handles tabular MRI data
 
     Args:
         client (botocore.client.S3): API client to access tabular data
     """
-    printt("Load Data")
+    print_title("Load Data")
     mri_data = get_tabular_data(client)
-    printt("Exploratory Data Analysis")
+    print_title("Exploratory Data Analysis")
     dprint(mri_data.shape)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
     print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
@@ -264,58 +335,25 @@ def tabular_data(client):
         # Filters data to only include first row instance of each unique SID
         mri_data = mri_data.groupby('SID').first()
 
-    printt("Preprocessing Data")
-    df = mri_data.select_dtypes(exclude=['float64', 'int'])
-    mri_data.drop(["Study", "SID", "total CNR"], axis=1, inplace=True)
+    print_title("Preprocessing Data")
+    mri_data = mandatory_preprocessing(mri_data)
+
     print("[*]\tStandardize / Normalize Data")
-    normalized_mri_data = normalize_tabular_data(mri_data)
+    if NORMALISATION:
+        mri_data = normalize_tabular_data(mri_data)
 
-    # Encode labels and gender
-    normalized_mri_data = normalized_mri_data.replace("AD", 1).replace("CN", 0)
-    normalized_mri_data['Gender'] = normalized_mri_data['Gender'].replace(
-        "F", 0).replace("M", 1)
-    # normalized_mri_data = normalized_mri_data[normalized_mri_data['Gender'] == 1]
     # Drop columns filled with na/0 values
-    normalized_mri_data = normalized_mri_data.dropna(axis=1, how='all')
-
-    # Data/Label split
-    X, y = split_data_train_test(normalized_mri_data, test_size=TEST_SIZE)
-
-    # Train/Test split
-    x_train, x_test, y_train, y_test = train_test_split(X,
-                                                        y,
-                                                        test_size=TEST_SIZE,
-                                                        random_state=RANDOM_STATE)
-    # Dimensionality
-    if PCA:
-        pca = PCA(n_components=190, whiten='True')
-        X = pca.fit(X).transform(X)
-    elif SVD:
-        svd = TruncatedSVD(n_components=190)
-        X = svd.fit(X).transform(X)
-
-    models = [RandomForestClassifier(), DecisionTreeClassifier(),
-              SVC(kernel="rbf")]
-    model_names = ["Random Forest", "Decision Tree", "Support Vector Machine"]
-
-    # Models
-    printt("Machine Learning Models")
+    mri_data = mri_data.dropna(axis=1, how='all')
+    # mri_data = mri_data[mri_data['Gender'] == 1]
     if machine_learning:
-        for name, classifier in zip(model_names, models):
-            model = Model(x_train, x_test, y_train, y_test,
-                          classifier, name)
-
-            model.train_predict()
-            # Display results
-            model.print_metrics()
-
-            model.balance_dataset()
-            # Plot Confusion matrix
-            model.plot_cm()
+        if TEST_ALL_CONFIGS:
+            all_configurations(mri_data)
+        else:
+            test_model(mri_data)
 
     if deep_learning:
-        printt("Deep Learning Models")
-        keras_network(normalized_mri_data, TEST_SIZE)
+        print_title("Deep Learning Models")
+        keras_network(mri_data, TEST_SIZE)
 
 
 def filter_original_data(data: pd.DataFrame) -> pd.DataFrame:
@@ -409,8 +447,10 @@ def image_data(client):
         data = pd.read_csv("refined_data.csv")
 
         # Get all folder/patient names in current directory
-        dirs = [item for item in os.listdir(
-            mri_image_dir) if os.path.isdir(mri_image_dir + item)]
+        dirs = [
+            item for item in os.listdir(mri_image_dir)
+            if os.path.isdir(mri_image_dir + item)
+        ]
         # Using patient names from directory's folder names, filter dataframe
         patients = data[data['PATIENT_ID'].isin(dirs)]
         # Get classification results for each patient in dataframe
@@ -424,8 +464,11 @@ def image_data(client):
         image_shapes = [image.shape for image in images]
 
         # new dataframe for images to corresponding labels
-        image_details = pd.DataFrame(
-            {"name": dirs, "image": image_shapes, "classification": classifications})
+        image_details = pd.DataFrame({
+            "name": dirs,
+            "image": image_shapes,
+            "classification": classifications
+        })
 
         # Save image details dataframe to file
         image_details.to_csv('image_details.csv', index=False)
@@ -463,6 +506,16 @@ def prepare_directory():
         os.mkdir("plots/confusion_matrices")
     if not os.path.isdir("models"):
         os.mkdir("models")
+    if not os.path.isdir("optimal_parms"):
+        os.mkdir("optimal_parms")
+    # Prepare files
+    if not exists('model_metrics.csv'):
+        file_object = open('model_metrics.csv', 'w')
+        file_object.write(
+            "classifier,acc,auc_roc,log_loss,normalisation,balance_training,pca,svd\n"
+        )
+        # Close the file
+        file_object.close()
 
 
 def cls():
@@ -481,7 +534,7 @@ def dprint(text: str):
         print(text)
 
 
-def printt(title):
+def print_title(title):
     """Print title
 
     Args:
@@ -498,7 +551,8 @@ def initialise_settings():
     global RANDOM_STATE
     global PCA
     global SVD
-
+    global BALANCE_TRAINING
+    global NORMALISATION
     global machine_learning
     global deep_learning
     global tabular
@@ -506,7 +560,8 @@ def initialise_settings():
     global client
     global mri_image_dir
     global verbose
-
+    global PREPROCESSING
+    global TEST_ALL_CONFIGS
     # Loads access keys in from .env file
     load_dotenv()
 
@@ -514,17 +569,24 @@ def initialise_settings():
     verbose = strtobool(os.getenv("VERBOSE"))
     mri_image_dir = os.getenv("MRI_IMAGES_DIRECTORY")
 
-    TEST_SIZE = float(os.getenv("TEST_SIZE"))
-    RANDOM_STATE = int(os.getenv("RANDOM_STATE"))
-    machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
-    deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
-
+    NORMALISATION = strtobool(os.getenv("NORMALISATION"))
     # Dimensionality Reduction
     PCA = strtobool(os.getenv("PCA"))
     SVD = strtobool(os.getenv("SVD"))
+
+    BALANCE_TRAINING = strtobool(os.getenv("BALANCE_TRAINING"))
+    TEST_SIZE = float(os.getenv("TEST_SIZE"))
+    RANDOM_STATE = int(os.getenv("RANDOM_STATE"))
+
+    machine_learning = strtobool(os.getenv("MACHINE_LEARNING"))
+    deep_learning = strtobool(os.getenv("DEEP_LEARNING"))
+
     tabular = strtobool(os.getenv("TABULAR_DATA"))
     image = strtobool(os.getenv("IMAGE_DATA"))
 
+    # All preprocessing settings as booleans
+    PREPROCESSING = [NORMALISATION, BALANCE_TRAINING, PCA, SVD]
+    TEST_ALL_CONFIGS = strtobool(os.getenv("TEST_ALL_CONFIGS"))
     access_key = os.getenv("ACCESS_KEY")
     secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     # Initialise AWS client to access Tabular Data
@@ -536,7 +598,7 @@ def initialise_settings():
 def main():
     """Main"""
     cls()
-    printt("Alzheimer's Classification Project")
+    print_title("Alzheimer's Classification Project")
     initialise_settings()
     prepare_directory()
 

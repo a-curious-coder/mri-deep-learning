@@ -11,8 +11,9 @@ from sklearn.metrics import (
     log_loss,
     roc_auc_score,
 )
-from sklearn.model_selection import RandomizedSearchCV
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from imblearn.over_sampling import SMOTE
+import pandas as pd
 
 
 class Model:
@@ -44,13 +45,14 @@ class Model:
         self.name = name
         self.file_name()
 
-    def initialise_optimal_parameters(self, grid = None):
+    def initialise_optimal_parameters(self, grid=None):
         # TODO: If there aren't pre-existing optimal parameter files
-        if exists(f"optimal_parameters/{f_name}_parms.csv"):
-            self.parms = pd.read_csv(f"optimal_parameters/{f_name}_parms.csv")
-            
+        if exists(f"optimal_parms/{self.f_name}_parms.csv"):
+            self.parms = pd.read_csv(
+                f"optimal_parms/{self.f_name}_parms.csv").to_dict("index")[0]
+            self.model = self.model.set_params(**self.parms)
+            return
         # NOTE: Executes cross validation to find optimal parameters for model
-
         # Only apply RandomSearch if pass as relevant argument
         if grid is not None:
             self.model = RandomizedSearchCV(estimator=self.model,
@@ -60,6 +62,27 @@ class Model:
                                             verbose=2,
                                             random_state=42,
                                             n_jobs=-1)
+        else:
+            self.model = GridSearchCV(estimator=self.model,
+                                      param_distributions=grid,
+                                      n_iter=100,
+                                      cv=5,
+                                      verbose=2,
+                                      random_state=42,
+                                      n_jobs=-1)
+
+        self.parms = self.model.fit(self.x_train, self.y_train).best_params_
+        for key in self.parms.keys():
+            if self.parms[key] == None:
+                self.parms[key] = "auto"
+        # Save optimal parameters to file
+        parms = pd.DataFrame.from_dict(self.parms, orient="index").transpose()
+        parms.to_csv(
+            f"optimal_parms/{self.f_name}_parms.csv", index=False)
+        print(self.parms)
+        # Save optimal model to file
+        # self.model.best_estimator_.save(
+        #     f"models/{self.f_name}_model.sav")
 
     def balance_dataset(self):
         """Balances dataset labels"""

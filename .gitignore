@@ -1,5 +1,6 @@
 # Own additions
 mri_images/
+mri_kaggle_dataset/
 __pycache__/
 .venv/
 .vscode/

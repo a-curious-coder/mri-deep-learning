@@ -1,27 +1,25 @@
-import glob
+import itertools
 import math
 import os
 import random
-import shutil
 from distutils.util import strtobool
 from os.path import exists
-import itertools
 
-import boto3
-import pandas as pd
-from sklearn.metrics import accuracy_score
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.svm import SVC
+from boto3 import client as boto3_client
+from pandas import unique as pd_unique
+from pandas import read_csv as pd_read_csv
 import tensorflow as tf
 from dotenv import load_dotenv
-from scipy.stats import pearsonr
 from sklearn.decomposition import PCA, TruncatedSVD
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from tensorflow.keras import layers, models
 from sklearn.naive_bayes import GaussianNB, MultinomialNB
-from visualisations import *
+from sklearn.svm import SVC
+from sklearn.tree import DecisionTreeClassifier
+from tensorflow.keras import layers, models
+
 from model import *
+from plot import *
 
 
 def tabular_data(client):
@@ -35,7 +33,7 @@ def tabular_data(client):
     print_title("Exploratory Data Analysis")
     dprint(mri_data.shape)
     # TODO: Plotly Dashboard of sorts which will be saved as HTML
-    print(f"There are {len(pd.unique(mri_data['SID']))} patients.")
+    print(f"There are {len(pd_unique(mri_data['SID']))} patients.")
     first_only = False
     if first_only:
         # Filters data to only include first row instance of each unique SID
@@ -73,7 +71,7 @@ def get_tabular_data(client):
     """
     response = client.get_object(Bucket='mri-deep-learning',
                                  Key='data/tabular/adni_ixi_rois_data_raw.csv')
-    return pd.read_csv(response.get("Body"))
+    return pd_read_csv(response.get("Body"))
 
 
 def mandatory_preprocessing(data):
@@ -327,7 +325,7 @@ def initialise_settings():
     access_key = os.getenv("ACCESS_KEY")
     secret_access_key = os.getenv("SECRET_ACCESS_KEY")
     # Initialise AWS CLIENT to access Tabular Data
-    CLIENT = boto3.client('s3',
+    CLIENT = boto3_client('s3',
                           aws_access_key_id=access_key,
                           aws_secret_access_key=secret_access_key)
 

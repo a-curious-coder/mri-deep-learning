@@ -1,19 +1,12 @@
 from os.path import exists
-from plotly import express as px, graph_objs as go
-from sklearn import metrics
-from sklearn.metrics import (
-    ConfusionMatrixDisplay,
-    PrecisionRecallDisplay,
-    accuracy_score,
-    average_precision_score,
-    balanced_accuracy_score,
-    confusion_matrix,
-    log_loss,
-    roc_auc_score,
-)
-from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
-from imblearn.over_sampling import SMOTE
+
 import pandas as pd
+from imblearn.over_sampling import SMOTE
+from plotly import express as px
+from plotly import graph_objs as go
+from sklearn import metrics
+from sklearn.metrics import accuracy_score, log_loss, roc_auc_score
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 
 
 class Model:
@@ -73,7 +66,7 @@ class Model:
 
         self.parms = self.model.fit(self.x_train, self.y_train).best_params_
         for key in self.parms.keys():
-            if self.parms[key] == None:
+            if self.parms[key] is None:
                 self.parms[key] = "auto"
         # Save optimal parameters to file
         parms = pd.DataFrame.from_dict(self.parms, orient="index").transpose()
@@ -117,15 +110,12 @@ class Model:
     def save_metrics(self):
         """Saves metrics to file"""
         all_metrics = [self.name, self.accuracy, self.roc_auc, self.log_loss]
-        # Open a file with access mode 'a'
-        file_object = open('model_metrics.csv', 'a')
-        my_string = ','.join(map(str, all_metrics))
-        file_object.write(my_string + ",")
-        preprocessing = ','.join(map(str, self.PREPROCESSING))
-        file_object.write(preprocessing)
-        file_object.write('\n')
-        # Close the file
-        file_object.close()
+        with open('model_metrics.csv', 'a') as file_object:
+            my_string = ','.join(map(str, all_metrics))
+            file_object.write(f"{my_string},")
+            preprocessing = ','.join(map(str, self.PREPROCESSING))
+            file_object.write(preprocessing)
+            file_object.write('\n')
 
     def plot_precision_recall(self):
         """Function to display and create plot representing precision and recall of trained model
@@ -161,19 +151,8 @@ class Model:
                           showscale=False)
         annotations = []
         for i, row in enumerate(cm):
-            for j, value in enumerate(row):
-                annotations.append({
-                    "x": labels[j],
-                    "y": labels[i],
-                    "text": str(value),
-                    "font": {
-                        "color": "black",
-                        "size": 20
-                    },
-                    "xref": "x1",
-                    "yref": "y1",
-                    "showarrow": False,
-                })
+            annotations.extend({"x": labels[j], "y": labels[i], "text": str(value), "font": {"color": "black", "size": 20}, "xref": "x1", "yref": "y1", "showarrow": False,} for j, value in enumerate(row))
+
         layout = go.Layout(
             title=dict(text=plot_title, x=0.5),
             xaxis=dict(title="Predicted"),

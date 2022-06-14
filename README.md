@@ -6,13 +6,27 @@ Alzheimer's in an incurable disease ravaging the elderly population. Through the
 
 ## Table of Contents
 ---
-- [Objectives](#objectives)
-- [Setup](#setup)
-- [Exploratory Data Analysis](#exploratory-data-analysis)
-  - [Tabular Data (ADNI/IXI)](#tabular-data--adni-ixi-)
-- [Methodology](#methodology)
-  - [Images](#images)
-- [Process](#process)
+
+- [Alzheimer's Classification](#alzheimer-s-classification)
+  * [Table of Contents](#table-of-contents)
+  * [Setup](#setup)
+  * [Dataset Description](#dataset-description)
+    + [Images](#images)
+  * [Objectives](#objectives)
+    + [Frame Selection](#frame-selection)
+      - [How to tackle this problem?](#how-to-tackle-this-problem-)
+      - [Problems / Solutions](#problems---solutions)
+    + [Image segmentation](#image-segmentation)
+    + [Image Augmentation](#image-augmentation)
+    + [Image Fabrication](#image-fabrication)
+  * [Problems](#problems)
+    + [1. How to select the best frames from scans?](#1-how-to-select-the-best-frames-from-scans-)
+  * [Limitations](#limitations)
+    + [Are MRI Scans Appropriate Data](#are-mri-scans-appropriate-data)
+  * [Exploratory Data Analysis](#exploratory-data-analysis)
+    + [Tabular Data](#tabular-data)
+  * [Process](#process)
+    + [Appendices](#appendices)
 
 ## Setup
 ---

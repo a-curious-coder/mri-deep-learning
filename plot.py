@@ -111,6 +111,7 @@ def plot_all_frames(test_image_t1):
 
 
 def plot_mri_slice(patient_id, patient_diagnosis, image, directory="plots"):
+    print(type(image))
     if exists(f'{directory}/{patient_diagnosis}/{patient_id}.png'):
         return False
     fig = go.Figure(go.Image(z=image))
@@ -119,14 +120,15 @@ def plot_mri_slice(patient_id, patient_diagnosis, image, directory="plots"):
     fig.update_layout(coloraxis_showscale=False)
     fig.update_xaxes(showticklabels=False)
     fig.update_yaxes(showticklabels=False)
-    fig.update_layout(
-        title_text=f"{patient_id} MRI Image : {patient_diagnosis}",
-        title_x=0.5,
-        autosize=False,
-        margin={'l': 0, 'r': 0, 't': 0, 'b': 0})
+    # fig.update_layout(
+    #     title_text=f"{patient_id} MRI Image : {patient_diagnosis}",
+    #     title_x=0.5,
+        # autosize=False,
+        # margin={'l': 0, 'r': 0, 't': 0, 'b': 0}
+        # )
 
     fig.write_image(
-        f'{directory}/{patient_diagnosis}/{patient_id}.png', scale=5)
+        f'{directory}/{patient_diagnosis}/{patient_id}.png')
     return True
     # fig.show()
 

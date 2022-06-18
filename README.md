@@ -96,6 +96,7 @@ The main goal of segmentation in the context of MRI brain scans is to separate t
 
 <!-- Link papers talking about scan segmentation -->
 <!-- https://pubmed.ncbi.nlm.nih.gov/25945121/ -->
+<!-- https://ieeexplore.ieee.org/abstract/document/9234262-->
 
 ### Image Augmentation
 

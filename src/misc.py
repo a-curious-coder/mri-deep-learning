@@ -15,16 +15,16 @@ def print_title(title):
         title (str): title
     """
     print("------------------------------------------------\n"
-           f"{title:<10}\n"
-           "------------------------------------------------")
+          f"{title:<10}\n"
+          "------------------------------------------------")
 
 
 def prepare_dir_structure():
     """Creates necessary folders in preparation for data/models saved"""
-    directories = ["plots", "plots/confusion_matrices",
-                   "plots/F", "plots/F/NL", "plots/F/MCI", "plots/F/AD",
-                   "plots/M", "plots/M/NL", "plots/M/MCI", "plots/M/AD",
-                   "models", "data", "optimal_parms"]
+    directories = ["../plots", "../plots/confusion_matrices",
+                   "../plots/F", "../plots/F/NL", "../plots/F/MCI", "../plots/F/AD",
+                   "../plots/M", "../plots/M/NL", "../plots/M/MCI", "../plots/M/AD",
+                   "../models", "../data", "../optimal_parms"]
 
     for directory in directories:
         if not os.path.isdir(directory):
@@ -40,7 +40,7 @@ def prepare_dir_structure():
 
 def progress_bar(current, total, bar_length=20):
     """ Prints progress bar
-    
+
     Args:
         current (int): current progress
         total (int): total progress

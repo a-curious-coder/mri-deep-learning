@@ -5,11 +5,11 @@ import random
 from distutils.util import strtobool
 from os.path import exists
 
-from boto3 import client as boto3_client
-from pandas import unique as pd_unique
-from pandas import read_csv as pd_read_csv
 import tensorflow as tf
+from boto3 import client as boto3_client
 from dotenv import load_dotenv
+from pandas import read_csv as pd_read_csv
+from pandas import unique as pd_unique
 from sklearn.decomposition import PCA, TruncatedSVD
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
@@ -18,8 +18,8 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from tensorflow.keras import layers, models
 
-from model import *
 from plot import *
+from src.tabular_data.model import *
 
 
 def tabular_data(client):

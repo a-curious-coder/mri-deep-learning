@@ -4,6 +4,7 @@ import numpy as np
 from plotly import express as px
 from plotly import graph_objs as go
 from plotly.subplots import make_subplots
+from skimage.transform import resize
 from skimage.util import montage
 
 
@@ -115,17 +116,19 @@ def plot_mri_slice(patient_id, patient_diagnosis, image, directory="plots"):
     if exists(f'{directory}/{patient_diagnosis}/{patient_id}.png'):
         return False
     fig = go.Figure(go.Image(z=image))
+    fig = resize(image, (250, 250),
+                 order=1, preserve_range=True)
     fig = px.imshow(image,
                     binary_string=True)
-    fig.update_layout(coloraxis_showscale=False)
-    fig.update_xaxes(showticklabels=False)
-    fig.update_yaxes(showticklabels=False)
+    # fig.update_layout(coloraxis_showscale=False)
+    # fig.update_xaxes(showticklabels=False)
+    # fig.update_yaxes(showticklabels=False)
     # fig.update_layout(
     #     title_text=f"{patient_id} MRI Image : {patient_diagnosis}",
     #     title_x=0.5,
-        # autosize=False,
-        # margin={'l': 0, 'r': 0, 't': 0, 'b': 0}
-        # )
+    # autosize=False,
+    # margin={'l': 0, 'r': 0, 't': 0, 'b': 0}
+    # )
 
     fig.write_image(
         f'{directory}/{patient_diagnosis}/{patient_id}.png')

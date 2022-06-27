@@ -29,7 +29,7 @@ Alzheimer's in an incurable disease ravaging the elderly population. Through the
     + [Appendices](#appendices)
 
 ## Setup
----
+
 Create an [AWS](https://aws.amazon.com) account, create a user profile through IAM and create a storage bucket through S3. Upload your MRI data to the bucket and change the load_data function according to your bucket name and directories to file(s)
 
 Create and initialise virtual environment
@@ -64,28 +64,67 @@ python main.py
 ```
 
 ## Dataset Description
----
+
 There are two datasets: Images and Tabular Data.
 
 ### Images
+
 I've been provided with around 6000 MRI scans of peoples brains. There's a small variance regarding their resolutions, however there's a consistency in that all scans have the quantity of frames; 256. The tabular data dataset is a collection of ADNI scans for the brain. 
 
 There are three angles for each scan: axial, coronal and sagittal. I suspect I will need to train several models, one for each angle. 
 
+## Literature Review
+<!-- NEW TERMS -->
+<!-- MULTIMODAL - https://towardsdatascience.com/multimodal-deep-learning-ce7d1d994f4 -->
+<!-- ATTENTION MECHANISM - https://www.analyticsvidhya.com/blog/2019/11/comprehensive-guide-attention-mechanism-deep-learning/ -->
+<!-- SELF ATTENTION -->
+<!-- CROSS MODALITY ATTENTION -->
+
+Classification of Alzheimer's Disease from the MRI datasets is a binary classification problem as the patients either have Alzheimer's Disease (AD) or they are Cognitive Normal (CN).
+
+### Literature 1
+<!-- Paper Link 1 : https://www.nature.com/articles/s41467-022-31037-5 -->
+This [paper](https://www.nature.com/articles/s41467-022-31037-5) was published June 20, 2022.
+
+Considering this is a multilabel classification problem, author has split the problem into a bunch of binary classification subtasks as to delineate the different types of AD. E.g. separate MCI from NC/DE, separate DE from NC/MCI and NC from MCI/DE cases.
+
+Moreover, author has included a Non-imaging classification model that takes scalar-valued clinical variables such as past medical history, neuropsychological scores and other clinical variables and predicts the AD status of the patient.
+
+### Literature 2
+<!-- Paper Link 2 : https://arxiv.org/abs/2206.08826-->
+This [paper](https://arxiv.org/abs/2206.08826) was published June 17, 2022.
+<!-- What data was used -->
+The author used clinical, genetic and image datasets sourced from ADNI (Alzheimer's Disease Something Something). 
+<!-- Pros/Cons of the data?-->
+Albeit rare to have a perfectly balanced data-set, there were imbalances in the labels across all dataset types.
+<!-- What models were used -->
+Takes a multimodal approach using separate neural networks for each type of data (two feedforward, one CNN). 
+<!-- How were the models trained and tested -->
+To train the CNN, the author took the middle slice from each scan of each patient at each of the three angles. 
+<!-- Experimentation / Results -->
+
+<!-- Limitations/Improvements -->
+After speaking with the author, Michal, of the paper, she stated that certain things weren't done such as skull-stripping, improved slice selection or any other pre-processing due to time limitations but mainly due to working with other data. The impact the other data's predictive models had on the overall classification far outweighed spending more time on the intracies of the image model; despite the image model independently providing the highest accuracy.
+
+
+### Literature 3
+<!-- Paper Link 3 -->
 
 
 ## Objectives
----
+
 ### Frame Selection
 
 When classifying any disease/problem with the brain via an MRI scan, there are specific frame(s) selected to analysis by the doctor. The goal here is to teach the computer to select these frame(s) independently throughout all 6000 scans. Accuracy here is important as we want to optimise the data we pass to the final CNN model when predicting Alzheimer's during experimentation.
 
 #### How to tackle this problem?
-Choosing the appropriate frame / frames from an MRI scan for the task of diagnosis is important as it is the key to the success of the model. The goal is to select the best frame(s) from each MRI scan to provide the best training data for the CNN model. 
+
+Choosing the appropriate frame / frames from an MRI scan for the task of diagnosis is important as it is the key to the success of the model. The goal is to select the best frame(s) from each MRI scan to provide the best training data for the CNN model.
 
 To save time with potential minor sacrifice to accuracy, I have chosen to train a CNN model on pre-existing brain MRI scan data-sets sourced online only consisting of the frames used in kaggle projects. The data-sets are available from the [Kaggle](https://www.kaggle.com/code/hachemsfar/alzheimer-mri-model-data-exploration/data).
 
 #### Problems / Solutions
+
 I found the data-set I downloaded from kaggle provided images with various diagnosis (which is fine) however, they all shared the same resolution; my mri scans didn't. To solve this, I will have to reshape/resize and potentially sheer my MRI scan images to match the resolution of the training data-set. 
 
 I will potentially rescale the brain images and fill in any blank space with black pixels (values of 0) which will be ignored by the trained CNN when stripping the skull. This is to maintain the aspect ratio of the brain scans; thus maintaining as much information as we can of each patient's brain.
@@ -107,12 +146,13 @@ To increase the size of the training set, the training images will need to be au
 General Adversial Neural Networks are popular for fabricating entirely new data. The goal is to provide a GAN with labelled brain images (Each label representing the angle of the scan) as to generate further training data.
 
 ## Problems
----
+
 ### 1. How to select the best frames from scans?
+
 The initial goal was difficult to determine without more information from the literature. I can select the appropriate frames first or strip the skull from each frame in each scan to select the brain. If we select the appropriate frames first, we can then strip the skull from these images which is far less data to process versus skull stripping entire scans with 256 frames each. 
 
 ## Limitations
----
+
 ### Are MRI Scans Appropriate Data
 
 During the research phase of this project, I came across multiple papers sharing similar results in regards to the effectiveness of MRI brain scans for identifying Alzheimer's. The general consensus is that deep learning models are able to identify Alzheimer's from MRI scans of the brain; however, if the model is shown a brain scan of a disease it has been trained on, it struggles to differentiate between the different types of disease, thus consistently misclassifying MRI scans, having a detrimental impact on the accuracy results.
@@ -121,12 +161,6 @@ Furthermore, in the real world, in the context of brain scans, doctors tradition
 
 <!-- ## What is Alzheimer's Disease? -->
 
-## Exploratory Data Analysis
-
----
-
-Classification of Alzheimer's Disease from the MRI datasets is a binary classification problem as the patients either have Alzheimer's Disease (AD) or they are Cognitive Normal (CN).
-
 ### Tabular Data
 
 Each patient is represented by a unique Security ID (SID). Each patient has had at least 2 scan sessions, thus has 2 or more MRI scans. In the effort of dimensionality reduction, I should try and represent each patient within a single row.
@@ -134,7 +168,6 @@ Each patient is represented by a unique Security ID (SID). Each patient has had 
 <!-- Pie chart for Diagnosis to represent binary ratio -->
 <!--  Will Cross Validation be needed due to size/ratio of diagnosis -->
 <!-- Something to do with Age -->
-
 
 ## Process
 
@@ -145,6 +178,5 @@ This section will outline my thoughts behind what I've done and why I've done it
 I've stored the MRI tabular data in Amazon's AWS cloud storage for safe keeping. Using various API keys, I can securely load in the data to this python script.
 
 Before the data is given to a deep learning model, I need to clean and simplify the data such that there's enough data there to make a classification but not too much it's too much.
-
 
 ### Appendices

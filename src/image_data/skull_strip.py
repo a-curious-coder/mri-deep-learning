@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 
+
 def rubbish_strip_skull(image):
     dir = "temp"
      # convert image to Grayscale and Black/White

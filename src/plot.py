@@ -12,6 +12,42 @@ def verify_import():
     print("[*]\tvisualisations.py successfully imported")
 
 
+def plot_history(history, epochs):
+    """ Plots CNN history accummulated during training
+
+    Args:
+        history (??): Model training history
+    """
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=epochs, y=history.history['loss'],
+                             name='Training Loss',
+                             marker_color='red'))
+    fig.add_trace(go.Scatter(x=epochs, y=history.history['val_loss'],
+                             name='Validation Loss',
+                             marker_color='blue'))
+    fig.add_trace(go.Scatter(x=epochs, y=history.history['sparse_categorical_accuracy'],
+                             name='Training Accuracy',
+                             marker_color='green'))
+    fig.add_trace(go.Scatter(x=epochs, y=history.history['val_sparse_categorical_accuracy'],
+                             name='Validation Accuracy',
+                             marker_color='orange'))
+    fig.update_layout(height=600, width=1000, title=dict(
+        text="Training and Validation Loss and Accuracy",
+        x=0.5,
+        y=0.9,
+        xanchor="center",
+        yanchor="top"))
+    saved = False
+    num = 1
+    name = f"../plots/history_{num}.png"
+    while not saved:
+        if not exists(name):
+            fig.write_image(name)
+            saved = True
+        num += 1
+        name = f"../plots/history_{num}.png"
+
+
 def plot_loss(loss, val_loss):
     epochs_range = list(range(1, len(loss)+1))
     loss = [i*100 for i in loss]

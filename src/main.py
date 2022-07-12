@@ -1,3 +1,4 @@
+#! usr/bin/python3
 """ Alzheimer's Classification Project
 
 Author: Curious Coder

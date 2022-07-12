@@ -1,9 +1,4 @@
 """ Process, transform, and load image data """
-from plot import *
-from misc import progress_bar
-from tensorflow.keras import layers, models
-from skimage.transform import resize
-from sklearn.model_selection import train_test_split
 import glob
 import os
 
@@ -14,8 +9,17 @@ import numpy as np
 import pandas as pd
 import skimage.segmentation as seg
 import tensorflow
+from skimage.transform import resize
+from sklearn.metrics import classification_report
+from sklearn.model_selection import train_test_split
+from tensorflow.keras import models
+from tensorflow.keras.layers import (Conv2D, Dense, Dropout, Flatten,
+                                     MaxPooling2D)
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
-
+import time
+from misc import progress_bar
+from plot import *
 
 MRI_IMAGE_DIR = "../data/mri_images"
 EDA = False
@@ -342,25 +346,44 @@ def resize_images(images, shape):
     return [resize(image, shape) for image in images]
 
 
+def create_cnn2():
+    model = models.Sequential()
+    model.add(Conv2D(100, (3, 3),  activation='relu', input_shape=(72, 72, 3)))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Dropout(0.5))
+    model.add(Conv2D(70, (3, 3), activation='relu'))
+    model.add(MaxPooling2D((2, 2)))
+    model.add(Dropout(0.3))
+    model.add(Conv2D(50, (3, 3), activation='relu'))
+    model.add(Flatten())
+    model.add(Dense(3, activation="softmax"))
+
+    model.compile(Adam(learning_rate=0.001), "sparse_categorical_crossentropy", metrics=[
+                  "sparse_categorical_accuracy"])
+
+    model.summary()
+    return model
+
+
 def create_cnn():
     """Create CNN model"""
     print("[INFO] Creating CNN model")
     # Create CNN model
     model = models.Sequential()
-    model.add(layers.Conv2D(
+    model.add(Conv2D(
         32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
     # NOTE: MaxPooling2D is used to reduce the size of the image
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
     # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
-    model.add(layers.Conv2D(32, (3, 3), activation="relu"))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(layers.Conv2D(64, (3, 3), activation="relu"))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(Conv2D(32, (3, 3), activation="relu"))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
+    model.add(Conv2D(64, (3, 3), activation="relu"))
+    model.add(MaxPooling2D(pool_size=(2, 2)))
     # NOTE: Flatten is used to convert the image to a 1D array
-    model.add(layers.Flatten())
+    model.add(Flatten())
     # NOTE: Dense is used to add more layers to the CNN
-    model.add(layers.Dense(64, activation="relu"))
-    model.add(layers.Dense(1, activation="sigmoid"))
+    model.add(Dense(64, activation="relu"))
+    model.add(Dense(1, activation="sigmoid"))
     model.compile(loss="binary_crossentropy",
                   optimizer="adam",
                   metrics=["accuracy"])
@@ -399,13 +422,13 @@ def train_cnn(data, labels):
         return
     print(f"[INFO] {len(data)} brain scans to train on")
     # Create CNN
-    cnn = create_cnn()
+    cnn = create_cnn2()
     print("[INFO] Training CNN")
     # Train CNN
     history = cnn.fit(data, labels, epochs=epochs)
 
     # Plot history
-    plot_history(history, epochs)
+    # plot_history(history, epochs)
     # Save CNN
     cnn.save(f"../data/models/cnn_{epochs}.h5")
 
@@ -424,12 +447,101 @@ def test_cnn(data, labels):
 
     print(f"[INFO] {len(data)} brain scans to test on")
     # Create CNN
-    cnn = create_cnn()
+    cnn = create_cnn2()
     # Load CNN
-    cnn.load_weights("../data/models/cnn_10.h5")
+    cnn.load_weights("../data/models/cnn_20.h5")
     # Test CNN
     results = cnn.evaluate(data, labels)
-    print(f"[INFO] Test results: {results}")
+    print(type(results))
+
+
+def train_and_test(X_train, X_test, y_train, y_test):
+    # Compute the mean and the variance of the training data for normalization.
+    import random
+
+    acc = []
+    f1 = []
+    precision = []
+    recall = []
+    seeds = random.sample(range(1, 20), 5)
+    for seed in seeds:
+        # Reset seed
+        os.environ['PYTHONHASHSEED'] = str(seed)
+        tensorflow.random.set_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+
+        model = models.Sequential()
+        # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
+        model.add(Conv2D(100, (3, 3),  activation='relu',
+                  input_shape=(72, 72, 3)))
+        # NOTE: MaxPooling2D is used to extract features and reduce the size of the image
+        model.add(MaxPooling2D((2, 2)))
+        # NOTE: Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
+        model.add(Dropout(0.5))
+        model.add(Conv2D(70, (3, 3), activation='relu'))
+        model.add(MaxPooling2D((2, 2)))
+        model.add(Dropout(0.3))
+        model.add(Conv2D(50, (3, 3), activation='relu'))
+        model.add(Flatten())
+        model.add(Dense(3, activation="softmax"))
+
+        model.compile(Adam(learning_rate=0.001), "sparse_categorical_crossentropy", metrics=[
+                      "sparse_categorical_accuracy"])
+
+        model.summary()
+
+        history = model.fit(X_train, y_train, epochs=5,
+                            batch_size=32, validation_split=0.1, verbose=1)
+        # Plot history stats to see if model is overfitting
+        plot_history(history, 5)
+        score = model.evaluate(X_test, y_test, verbose=0)
+        print(f'Test loss: {score[0]} / Test accuracy: {score[1]}')
+        acc.append(score[1])
+
+        test_predictions = model.predict(X_test)
+        test_label = to_categorical(y_test, 3)
+
+        true_label = np.argmax(test_label, axis=1)
+
+        predicted_label = np.argmax(test_predictions, axis=1)
+
+        class_report = classification_report(
+            true_label, predicted_label, output_dict=True)
+        precision.append(class_report["macro avg"]["precision"])
+        recall.append(class_report["macro avg"]["recall"])
+        f1.append(class_report["macro avg"]["f1-score"])
+
+    # Calculate statistics
+    avg_acc = f"{np.array(acc).mean() * 100:.2f}"
+    avg_precision = f"{np.array(precision).mean() * 100:.2f}"
+    avg_recall = f"{np.array(recall).mean() * 100:.2f}"
+    avg_f1 = f"{np.array(f1).mean() * 100:.2f}"
+
+    std_acc = f"{np.array(acc).std() * 100:.2f}"
+    std_precision = f"{np.array(precision).std() * 100:.2f}"
+    std_recall = f"{np.array(recall).std() * 100:.2f}"
+    std_f1 = f"{np.array(f1).std() * 100:.2f}"
+
+    # Print statistics
+    print(f"{'Type':<10} {'Metric':<10} {'Standard Deviation':<10}")
+    print(f"{'Average':<10}{'Accuracy':<10} {avg_acc:<10}")
+    print(f"{'Average':<10}{'Precision':<10} {avg_precision:<10}")
+    print(f"{'Average':<10}{'Recall':<10} {avg_recall:<10}")
+    print(f"{'Average':<10}{'F1':<10} {avg_f1:<10}")
+    print(f"{'STD':<10} {'Accuracy':<10} {std_acc:<10}")
+    print(f"{'STD':<10} {'Precision':<10} {std_precision:<10}")
+    print(f"{'STD':<10} {'Recall':<10} {std_recall:<10}")
+    print(f"{'STD':<10} {'F1':<10} {std_f1:<10}")
+
+
+def normalise_data(data):
+    """ Normalises the data
+
+    Args:
+        data (list): List of data to normalise
+    """
+    return (data - np.min(data)) / (np.max(data) - np.min(data))
 
 
 def generate_dataset(patient_ids):
@@ -446,25 +558,34 @@ def generate_dataset(patient_ids):
         # Split patient_ids into batches of 10
         batches = np.array_split(patient_ids, len(patient_ids)//10)
         for batch, patient_ids in enumerate(batches):
-            print(f"[{batch}] Saving  mri scan data")
+            start = time.time()
+            # If batch already exists, don't rewrite it
             if os.path.exists(f"../data/dataset/{batch}_batch_data.npy"):
+                print(
+                    f"[INFO] Batch {batch} already saved\t{time.time()-start:.2f}s")
                 continue
             final = []
             all_mri_center_slices = []
-            # print(f"[INFO] Getting all {len(patient_ids)} mri scans worth of data")
+
+            # Get mri scans for each patient
             mri_scans_data = get_mri_scans_data(patient_ids)
 
-            # print("[INFO] Extracting center slices of each mri scan angle")
+            # Get center frame of each angle of the scan
             for mri_scan in mri_scans_data:
                 all_mri_center_slices.append(get_center_slices(mri_scan))
 
-            # print("[INFO] Concatenating all center slices for each scan")
             for i, center_slices in enumerate(all_mri_center_slices):
                 print(f"{i/len(all_mri_center_slices)*100}%", end="\r")
                 # Resizing each center slice to 72/72
                 # TODO: Determine an optimal image size
                 # NOTE: Could it be plausible to suggest a size closest to native scan resolution is best?
                 #   Maintain as much quality?
+
+                # Normalise each center slice pixel in image between 0-1
+                for index, slice in enumerate(center_slices):
+                    # normalise values in slice
+                    center_slices[index] = normalise_data(slice)
+
                 im1, im2, im3 = resize_slices(center_slices, (72, 72))
                 # Convert these image slices of scan to concatenated np array for CNN
                 all_angles = np.array([im1, im2, im3]).T
@@ -473,6 +594,7 @@ def generate_dataset(patient_ids):
             # Save final data-set to file
             np.save(
                 f"../data/dataset/{batch}_batch_data.npy", final, allow_pickle=True)
+            print(f"[INFO] Batch {batch} saved\t{time.time()-start:.2f}s")
 
         npfiles = glob.glob("../data/dataset/*.npy")
         npfiles.sort()
@@ -487,7 +609,63 @@ def generate_dataset(patient_ids):
         # Print length of all_arrays
         print(f"[INFO] Length of all_arrays: {len(all_arrays)}")
         np.save("../data/dataset/all.npy", all_arrays)
-# Unused
+
+
+def prepare_labels(labels, mode=0):
+    """ Prepares labels for CNN
+
+    Args:
+        labels (list): labels
+        mode (int): translate labels according to mode
+
+    Returns:
+        list: labels
+    """
+    if mode == 0:
+        # Convert "NL" to 0
+        labels = [0 if label == "NL" else label for label in labels]
+        # Convert "MCI" to 1
+        labels = [1 if label == "MCI" else label for label in labels]
+        # Convert "AD" to 2
+        labels = [2 if label == "AD" else label for label in labels]
+    if mode == 1:
+        # Convert 0 to "NL"
+        labels = [0 if label == "NL" else label for label in labels]
+        # Convert 1 to "MCI"
+        labels = ["MCI" if label == 1 else label for label in labels]
+        # Convert 2 to "AD"
+        labels = ["AD" if label == 2 else label for label in labels]
+    return np.array(labels)
+
+
+def prepare_dataset(data, labels, mode=0):
+    """ Prepares the data best suited to model 
+        mode 0 : Leaves labels as they are
+        mode 1 : Change labels to NL versus other labels
+        mode 2 : Change labels to MCI versus other labels
+        mode 3 : Change labels to AD versus other labels
+    Args:
+        data (list): list of np arrays
+        mode (int): 0 for training, 1 for testing
+    Return:
+    """
+
+    if mode == 0:
+        # Split data into training and testing sets
+        X_train, X_test, y_train, y_test = train_test_split(
+            data, y, test_size=0.2, random_state=42)
+
+    elif mode == 1:
+        # Normalize data
+        # data = normalize(data)
+        return data
+    else:
+        raise ValueError("Mode must be 0 or 1")
+
+    # Normalize data
+    # X_train =
+
+    return X_train, X_test, y_train, y_test
 
 
 def unused_passholder():
@@ -656,14 +834,17 @@ def unused_passholder():
     pass
 
 
+def TwoD_SNE():
+    """ 2D t-SNE on image data"""
+    pass
+
+
 def main():
     """Image data classification"""
     # TODO: Skull stripping
     # TODO: Effective frame selection
-
     try:
         print("🅸 🅼 🅰 🅶 🅴 🅼 🅾 🅳 🅴 🅻")
-
         # If ..data/image_details.csv exists, load it
         if not os.path.exists("../data/image_details.csv"):
             # Load in mri data schema
@@ -683,13 +864,7 @@ def main():
         print(
             f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}")
         labels = data['DIAGNOSIS'].tolist()
-        # Convert "NL" to 0
-        labels = [0 if label == "NL" else label for label in labels]
-        # Convert "MCI" to 1
-        labels = [1 if label == "MCI" else label for label in labels]
-        # Convert "AD" to 2
-        labels = [2 if label == "AD" else label for label in labels]
-        labels = np.array(labels)
+        labels = prepare_labels(labels)
         # Get all patient_ids from data
         patient_ids = data['NAME'].unique()
 
@@ -710,10 +885,11 @@ def main():
         train_labels = labels[:int(len(dataset) * 0.8)]
         test_labels = labels[:int(len(dataset) * 0.2)]
         print(type(labels), type(labels[0]))
+        train_and_test(train_data, test_data, train_labels, test_labels)
         # Train CNN on dataset
-        train_cnn(train_data, train_labels)
+        # train_cnn(train_data, train_labels)
         # Test CNN on dataset
-        test_cnn(test_data, test_labels)
+        # test_cnn(test_data, test_labels)
         # Train CNN to identify best frame(s) of MRI scans
         # train_cnn(data)
         # get_best_mri_frame()

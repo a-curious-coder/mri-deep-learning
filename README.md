@@ -14,7 +14,7 @@ Alzheimer's in an incurable disease ravaging the elderly population. Through the
     + [Images](#images)
   * [Objectives](#objectives)
     + [Frame Selection](#frame-selection)
-      - [How to tackle this problem?](#how-to-tackle-this-problem-)
+      - [Tackling the problem](#how-to-tackle-this-problem-)
       - [Problems / Solutions](#problems---solutions)
     + [Image segmentation](#image-segmentation)
     + [Image Augmentation](#image-augmentation)
@@ -64,8 +64,7 @@ python main.py
 ```
 
 ## Dataset Description
-
-There are two datasets: Images and Tabular Data.
+I've sourced data from <sources> however, ADNI required a request to access to data; thus making it private.
 
 ### Images
 
@@ -83,15 +82,76 @@ There are three angles for each scan: axial, coronal and sagittal. I suspect I w
 Classification of Alzheimer's Disease from the MRI datasets is a binary classification problem as the patients either have Alzheimer's Disease (AD) or they are Cognitive Normal (CN).
 
 ### Literature 1
-<!-- Paper Link 1 : https://www.nature.com/articles/s41467-022-31037-5 -->
+<!-- Paper Link 1 : https://ieeexplore.ieee.org/abstract/document/7950647?casa%5C_token=nOv1QYjkYwkAAAAA:Ln3Jr6dUyYV7iyCMs9wMQWKwPb4Vz-UwdyI3QfUcRCon6vqwE2FsE%5C_ctoOhfu6bk9XFg9wvW-->
+
+#### Data
+The author uses a specific subset of 3d structural MRI brain scans from ADNI which has been *preprocessed with alignment and skull-stripping marked as “Spatially Normalized, Masked and N3 corrected T1 images"*. The data was used to train a neural network that detects Alzheimer's Disease from the MRI scans. To mitigate data leaks, the author ensured only the first scan of a patient was used since using multiple scans from the patients who had them would result in a slight bias.
+
+The data-set used consisted of 231 images over 4 classes. 
+> 50 of Alzheimer’s Disease (AD) patients
+  43 of Late Mild Cognitive Impairment (LMCI)
+  77 of Early Mild Cognitive Impairment (EMCI) 
+  61 of Normal Cohort (NC)
+
+
+<!-- Data Analysis / Visualisation -->
+The author acknowledges various details of the data and provides minimal visualisations of this data to help convey the data's nature.
+
+<!-- Preprocessing Method -->
+Data came pre-processed.
+<!-- What models were used -->
+The author created 6 binary classification tasks using all combinations of class labels against eachother and the results are shown in Table 1 within the paper.
+<!-- Experimentation / Results -->
+
+<!-- Limitations/Improvements -->
+
+The author uses 3D structural MRI brain scans as the data-set to train and test the deep learning models used for classification. This data was sourced from ADNI (Alzheimer's Disease Neuroimaging Initiative) and has 4 labels
+
+The author(s) of this paper have moved away from the obvious multi-class classification and created 6 binary classification problems for each permutation of the labels.
+
+Since an MRI scan has different 'layers' in the scan, the first image for each patient was retrieved, thus the same area/layer of the brain was used for each patient as the data-set. This data was preprocessed using 'alignment' and 'skull-stripping'  which are marked as “Spatially Normalized, Masked and N3 corrected T1 images”. This removes unnecessary information from the data, allowing the classification methods to handle the data that's important / relevant.
+
+Due to the complexity of the data, deep learning methods such as Convolutional and Residual neural networks are currently the ideal candidates for handling and classifying this image data. Standard machine learning methods would be limited in their capabilities of classifying new MRI image data.
+
+% Comparison of models / model prediction accuracy (Which models were better)
+\citeauthor{paper1}\cite{paper1} developed a few different classification models to classify Alzheimer's in MRI scans. VoxCNN and Resnet
+% Transfer learning? (Used pre-trained models) Isolated Learning?
+The models described in this paper are examples of isolated learning meaning they were trained from scratch.
+
+### Literature 2
+<!-- Paper Link 2 : https://www.nature.com/articles/s41467-022-31037-5 -->
 This [paper](https://www.nature.com/articles/s41467-022-31037-5) was published June 20, 2022.
 
 Considering this is a multilabel classification problem, author has split the problem into a bunch of binary classification subtasks as to delineate the different types of AD. E.g. separate MCI from NC/DE, separate DE from NC/MCI and NC from MCI/DE cases.
 
 Moreover, author has included a Non-imaging classification model that takes scalar-valued clinical variables such as past medical history, neuropsychological scores and other clinical variables and predicts the AD status of the patient.
 
-### Literature 2
-<!-- Paper Link 2 : https://arxiv.org/abs/2206.08826-->
+<!-- What data was used -->
+The author has managed to access data from eight separate sources, thus accumulating a lot of data to train various machine/deep learning models with. These sources are: AIBL, ADNI, FHS, LBDSU, NACC, NIFD, OASIS, PPMI. Data from ADNI, AIBL, NACC, NIFD, OASIS and PPMI are public. However, data from FHS and LBDSU have to be requested.
+
+<!-- Pros/Cons of the data?-->
+Table 1 in the paper shows various statistics of each feature in each dataset. All of the datasets have multiple classes and the data is not balanced. However, with regards to gender for each diagnosis, 
+
+<!-- What models were used -->
+CNN, Catboost and a Fusion of the two.
+
+<!-- Experimentation / Results -->
+Initially separated the problem into three separate binary classificatiion tasks in the effort to effectively delineate each of the three labels; NC, MCI, AD.
+
+<!-- What is the best model? -->
+The best model is the fusion of the image (CNN) and non-image models (CatBoost). 
+
+<!-- Limitations/Improvements -->
+The author acknowledges an improvement for the project; to allow for the identification of co-occuring dementing conditions within the same individual.
+- Wait for further data that allows for the investigation of identifying the distinct signatures within diagnosed MCI patients who have prodromal AD.
+- Since the data is retrieved from studies that primarily collect data focussing on Alzheimer's disease, it could detract from the accuracy in nADDs diagnosis'.
+- MMSE; well-known limitations in specificity, may bias toward more common forms of dementia like AD.
+- Future models could be optimised provided additional clinical data tailored to their diagnosis; further specific tests. E.g. motor examination to assess parkinsons.
+
+
+
+### Literature 3
+<!-- Paper Link 3 : https://arxiv.org/abs/2206.08826-->
 This [paper](https://arxiv.org/abs/2206.08826) was published June 17, 2022.
 <!-- What data was used -->
 The author used clinical, genetic and image datasets sourced from ADNI (Alzheimer's Disease Something Something). 
@@ -104,22 +164,27 @@ To train the CNN, the author took the middle slice from each scan of each patien
 <!-- Experimentation / Results -->
 
 <!-- Limitations/Improvements -->
-After speaking with the author, Michal, of the paper, she stated that certain things weren't done such as skull-stripping, improved slice selection or any other pre-processing due to time limitations but mainly due to working with other data. The impact the other data's predictive models had on the overall classification far outweighed spending more time on the intracies of the image model; despite the image model independently providing the highest accuracy.
+After speaking with the author, Michal, of the paper, she stated that certain things weren't done such as skull-stripping, improved slice selection or any other pre-processing due to time limitations which is mainly due to working with other data. The impact the other data's predictive models had on the overall classification far outweighed further time expenditure on the intracies of the image classification model; despite the image model providing the highest independent accuracy.
 
-
-### Literature 3
-<!-- Paper Link 3 -->
 
 
 ## Objectives
+
+### Skull stripping
+
+As a form of pre-processing to optimise the training of the CNN, segmenting the brain from the skull of each mri-scan leaves the important and necessary data behind. Any other features other than the brain could negatively influence the classification of the patient as the skull doesn't exhibit any differences whether the patient has alzheimer's or not; this won't be obvious to a computer.
+
+#### Tackling the problem
+There are various techniques to segmenting objects from surrounding objects in images; this will likely require a deep learning model. 
+
 
 ### Frame Selection
 
 When classifying any disease/problem with the brain via an MRI scan, there are specific frame(s) selected to analysis by the doctor. The goal here is to teach the computer to select these frame(s) independently throughout all 6000 scans. Accuracy here is important as we want to optimise the data we pass to the final CNN model when predicting Alzheimer's during experimentation.
 
-#### How to tackle this problem?
+#### Tackling the problem
 
-Choosing the appropriate frame / frames from an MRI scan for the task of diagnosis is important as it is the key to the success of the model. The goal is to select the best frame(s) from each MRI scan to provide the best training data for the CNN model.
+Manually select *x* amount of scan images from mri scan files to create a data-set to train a CNN on which will be used to predict/select the better frames for Alzheimer's classification in new MRI scans. Might require data augmentation to compound number of images are in the data-set.
 
 To save time with potential minor sacrifice to accuracy, I have chosen to train a CNN model on pre-existing brain MRI scan data-sets sourced online only consisting of the frames used in kaggle projects. The data-sets are available from the [Kaggle](https://www.kaggle.com/code/hachemsfar/alzheimer-mri-model-data-exploration/data).
 

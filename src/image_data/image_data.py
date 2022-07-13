@@ -18,6 +18,7 @@ from tensorflow.keras.layers import (Conv2D, Dense, Dropout, Flatten,
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.utils import to_categorical
 import time
+
 from misc import progress_bar
 from plot import *
 
@@ -391,17 +392,37 @@ def create_cnn():
 
 
 def plot_history(history, epochs):
-    """Plot training history"""
-    # Print history
-    input(history.history.keys())
+    """Plot training history
+
+    Args:
+        history (keras.callbacks.History): training history
+        epochs (int): number of epochs
+
+    Returns:
+        None
+    """
     # Plot training history
-    plt.plot(history.history["accuracy"], label="accuracy")
-    plt.plot(history.history["loss"], label="loss")
-    plt.xlabel("Epoch")
+    plt.plot(np.arange(0, epochs),
+             history.history["sparse_categorical_accuracy"], label="train_acc")
+    plt.plot(np.arange(0, epochs),
+             history.history["val_sparse_categorical_accuracy"], label="val_acc")
+    plt.title("Training Accuracy")
+    plt.xlabel("Epochs")
     plt.ylabel("Accuracy")
     plt.legend()
     # Save figure
-    plt.savefig(f"../data/images/history_{epochs}.png")
+    plt.savefig(f"../data/images/training_accuracy_{epochs}.png")
+    # Reset plot
+    plt.clf()
+    plt.plot(np.arange(0, epochs), history.history["loss"], label="train_loss")
+    plt.plot(np.arange(0, epochs),
+             history.history["val_loss"], label="val_loss")
+    plt.title("Training Loss")
+    plt.xlabel("Epochs")
+    plt.ylabel("Loss")
+    plt.legend()
+    # Save figure
+    plt.savefig(f"../data/images/training_loss_{epochs}.png")
 
 
 def train_cnn(data, labels):
@@ -456,6 +477,17 @@ def test_cnn(data, labels):
 
 
 def train_and_test(X_train, X_test, y_train, y_test):
+    """ Trains and tests a CNN on the data
+
+    Args:
+        X_train (list): training data
+        X_test (list): testing data
+        y_train (list): training labels
+        y_test (list): testing labels
+
+    Returns:
+        None
+    """
     # Compute the mean and the variance of the training data for normalization.
     import random
 
@@ -494,7 +526,7 @@ def train_and_test(X_train, X_test, y_train, y_test):
         history = model.fit(X_train, y_train, epochs=5,
                             batch_size=32, validation_split=0.1, verbose=1)
         # Plot history stats to see if model is overfitting
-        plot_history(history, 5)
+        # plot_history(history, seed + 5)
         score = model.evaluate(X_test, y_test, verbose=0)
         print(f'Test loss: {score[0]} / Test accuracy: {score[1]}')
         acc.append(score[1])

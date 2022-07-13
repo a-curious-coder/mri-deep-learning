@@ -67,7 +67,9 @@ def main():
     # Prettiness for terminal
     print_title()
     print_time_left()
+    print("\n[INFO] Loading in image file")
     from image_data.image_data import main as imain
+    print("[INFO] image file loaded")
     imain()
     print("NOTE: TEMPORARY RETURN STATEMENT AT EOF")
     return

@@ -27,7 +27,7 @@ EDA = False
 
 
 def handle_null_values(data):
-    """Handleks null values from data
+    """Handles null values from data
 
     Args:
         data (pd.DataFrame): original data
@@ -55,7 +55,8 @@ def filter_data(data, scan_num=None, project=None):
     """
     # If the filtered data is not already available, run the data filtering
     print(
-        f"[*]\tRefining big data-frame to SCAN_NUM: {scan_num}, PROJECT: {project}")
+        f"[*]\tRefining big data-frame to SCAN_NUM: {scan_num}, PROJECT: {project}"
+    )
     if not os.path.exists("../data/filtered_data.csv"):
         # Filter data by scan number and study
         # if PROJECT is not none
@@ -126,8 +127,12 @@ def tabularise_image_data(data=None):
         # Get genders of each patient
         genders = list(patients['GENDER'])
         # Bring data together into single dataframe
-        temp = pd.DataFrame({"NAME": patient_ids, "SHAPE": image_shapes,
-                            "GENDER": genders, "DIAGNOSIS": classifications})
+        temp = pd.DataFrame({
+            "NAME": patient_ids,
+            "SHAPE": image_shapes,
+            "GENDER": genders,
+            "DIAGNOSIS": classifications
+        })
         info.append(temp)
     final = pd.concat(info, axis=0, ignore_index=False)
     # Save dataframe to file
@@ -349,7 +354,7 @@ def resize_images(images, shape):
 
 def create_cnn2():
     model = models.Sequential()
-    model.add(Conv2D(100, (3, 3),  activation='relu', input_shape=(72, 72, 3)))
+    model.add(Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
     model.add(MaxPooling2D((2, 2)))
     model.add(Dropout(0.5))
     model.add(Conv2D(70, (3, 3), activation='relu'))
@@ -359,8 +364,9 @@ def create_cnn2():
     model.add(Flatten())
     model.add(Dense(3, activation="softmax"))
 
-    model.compile(Adam(learning_rate=0.001), "sparse_categorical_crossentropy", metrics=[
-                  "sparse_categorical_accuracy"])
+    model.compile(Adam(learning_rate=0.001),
+                  "sparse_categorical_crossentropy",
+                  metrics=["sparse_categorical_accuracy"])
 
     model.summary()
     return model
@@ -371,8 +377,7 @@ def create_cnn():
     print("[INFO] Creating CNN model")
     # Create CNN model
     model = models.Sequential()
-    model.add(Conv2D(
-        32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
+    model.add(Conv2D(32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
     # NOTE: MaxPooling2D is used to reduce the size of the image
     model.add(MaxPooling2D(pool_size=(2, 2)))
     # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
@@ -403,9 +408,11 @@ def plot_history(history, epochs):
     """
     # Plot training history
     plt.plot(np.arange(0, epochs),
-             history.history["sparse_categorical_accuracy"], label="train_acc")
+             history.history["sparse_categorical_accuracy"],
+             label="train_acc")
     plt.plot(np.arange(0, epochs),
-             history.history["val_sparse_categorical_accuracy"], label="val_acc")
+             history.history["val_sparse_categorical_accuracy"],
+             label="val_acc")
     plt.title("Training Accuracy")
     plt.xlabel("Epochs")
     plt.ylabel("Accuracy")
@@ -416,7 +423,8 @@ def plot_history(history, epochs):
     plt.clf()
     plt.plot(np.arange(0, epochs), history.history["loss"], label="train_loss")
     plt.plot(np.arange(0, epochs),
-             history.history["val_loss"], label="val_loss")
+             history.history["val_loss"],
+             label="val_loss")
     plt.title("Training Loss")
     plt.xlabel("Epochs")
     plt.ylabel("Loss")
@@ -505,8 +513,8 @@ def train_and_test(X_train, X_test, y_train, y_test):
 
         model = models.Sequential()
         # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
-        model.add(Conv2D(100, (3, 3),  activation='relu',
-                  input_shape=(72, 72, 3)))
+        model.add(
+            Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
         # NOTE: MaxPooling2D is used to extract features and reduce the size of the image
         model.add(MaxPooling2D((2, 2)))
         # NOTE: Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
@@ -518,13 +526,18 @@ def train_and_test(X_train, X_test, y_train, y_test):
         model.add(Flatten())
         model.add(Dense(3, activation="softmax"))
 
-        model.compile(Adam(learning_rate=0.001), "sparse_categorical_crossentropy", metrics=[
-                      "sparse_categorical_accuracy"])
+        model.compile(Adam(learning_rate=0.001),
+                      "sparse_categorical_crossentropy",
+                      metrics=["sparse_categorical_accuracy"])
 
         model.summary()
 
-        history = model.fit(X_train, y_train, epochs=5,
-                            batch_size=32, validation_split=0.1, verbose=1)
+        history = model.fit(X_train,
+                            y_train,
+                            epochs=5,
+                            batch_size=32,
+                            validation_split=0.1,
+                            verbose=1)
         # Plot history stats to see if model is overfitting
         # plot_history(history, seed + 5)
         score = model.evaluate(X_test, y_test, verbose=0)
@@ -538,8 +551,9 @@ def train_and_test(X_train, X_test, y_train, y_test):
 
         predicted_label = np.argmax(test_predictions, axis=1)
 
-        class_report = classification_report(
-            true_label, predicted_label, output_dict=True)
+        class_report = classification_report(true_label,
+                                             predicted_label,
+                                             output_dict=True)
         precision.append(class_report["macro avg"]["precision"])
         recall.append(class_report["macro avg"]["recall"])
         f1.append(class_report["macro avg"]["f1-score"])
@@ -588,13 +602,14 @@ def generate_dataset(patient_ids):
         print("[INFO] Generating image dataset")
         # Create final data-set for classification
         # Split patient_ids into batches of 10
-        batches = np.array_split(patient_ids, len(patient_ids)//10)
+        batches = np.array_split(patient_ids, len(patient_ids) // 10)
         for batch, patient_ids in enumerate(batches):
             start = time.time()
             # If batch already exists, don't rewrite it
             if os.path.exists(f"../data/dataset/{batch}_batch_data.npy"):
                 print(
-                    f"[INFO] Batch {batch} already saved\t{time.time()-start:.2f}s")
+                    f"[INFO] Batch {batch} already saved\t{time.time()-start:.2f}s"
+                )
                 continue
             final = []
             all_mri_center_slices = []
@@ -624,8 +639,9 @@ def generate_dataset(patient_ids):
                 # print(type(all_angles))
                 final.append(all_angles)
             # Save final data-set to file
-            np.save(
-                f"../data/dataset/{batch}_batch_data.npy", final, allow_pickle=True)
+            np.save(f"../data/dataset/{batch}_batch_data.npy",
+                    final,
+                    allow_pickle=True)
             print(f"[INFO] Batch {batch} saved\t{time.time()-start:.2f}s")
 
         npfiles = glob.glob("../data/dataset/*.npy")
@@ -684,8 +700,10 @@ def prepare_dataset(data, labels, mode=0):
 
     if mode == 0:
         # Split data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(
-            data, y, test_size=0.2, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(data,
+                                                            y,
+                                                            test_size=0.2,
+                                                            random_state=42)
 
     elif mode == 1:
         # Normalize data
@@ -702,6 +720,7 @@ def prepare_dataset(data, labels, mode=0):
 
 def unused_passholder():
     """ Function to passholder images"""
+
     def get_n_mri_scans(n):
         """ Loads a set number of mri scans from the data directory
 
@@ -715,18 +734,19 @@ def unused_passholder():
             MRI scans
         """
         # Load image_details
-        image_details = pd.read_csv(
-            '../data/image_details.csv', low_memory=False)
+        image_details = pd.read_csv('../data/image_details.csv',
+                                    low_memory=False)
         # image_details equals where diagnosis is not MCI
         image_details = image_details[image_details['diagnosis'] != 'MCI']
 
         # Get first n names from image_details
         patient_ids = image_details['name'].head(n).tolist()
-        patient_scans = [get_mri_scan(patient_id)
-                         for patient_id in patient_ids]
+        patient_scans = [
+            get_mri_scan(patient_id) for patient_id in patient_ids
+        ]
         # Get patient id classification from image_details
-        patient_diagnosis = image_details.loc[image_details['name'].isin(
-            patient_ids), 'diagnosis']
+        patient_diagnosis = image_details.loc[
+            image_details['name'].isin(patient_ids), 'diagnosis']
 
         return zip(patient_ids, patient_diagnosis, patient_scans)
 
@@ -796,10 +816,10 @@ def unused_passholder():
         # show_image("gray", image, "gray")
         # to binary using Otsu's method
         # Threshold the image
-        ret, thresh_custom = cv2.threshold(
-            image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        ret, thresh_custom = cv2.threshold(image, 0, 255,
+                                           cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         # ShowImage ( " Applying Otsu ' , thresh_custom , ' gray " )
-        points = circle_points(200, [128, 128], 35)[: -1]
+        points = circle_points(200, [128, 128], 35)[:-1]
         # fig , ax image_show ( gray )
         # ax.plot ( points [ :, 0 ] , points [ :, 1 ] , ' --r ' , Lw = 3 )
         snake = seg.active_contour(thresh_custom, points)
@@ -807,18 +827,18 @@ def unused_passholder():
         # ax.plot ( points [ :, 0 ] , points [ :, 1 ] , ' --r ' , Lw = 3 )
         ax.plot(snake[:, 0], snake[:, 1], ' b ', lw=3)
         # OTSU THRESHOLDING
-        _, binarized = cv2.threshold(
-            filtered, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        _, binarized = cv2.threshold(filtered, 0, 255,
+                                     cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         print(binarized.shape, ' is Otsu thresholding value ')
         # ShowImage ( ' Brain with Skull XXX ' , binarized , ' gray ' )
         plt.imshow(binarized)
 
     def circle_points(resolution, center, radius):
         """Generate points which define a circle on an image.Centre refers to the centre of the circle"""
-        radians = np.linspace(0, 2*np.pi, resolution)
-        c = center[1] + radius*np.cos(radians)  # polar co - ordinates
-        r = center[0] + radius*np.sin(radians)
-        return np.array([c, r]) . T
+        radians = np.linspace(0, 2 * np.pi, resolution)
+        c = center[1] + radius * np.cos(radians)  # polar co - ordinates
+        r = center[0] + radius * np.sin(radians)
+        return np.array([c, r]).T
 
     def compare_mri_images(image_details):
         """ Compares images from different scans """
@@ -877,11 +897,11 @@ def main():
     # TODO: Effective frame selection
     try:
         print("🅸 🅼 🅰 🅶 🅴 🅼 🅾 🅳 🅴 🅻")
-        # If ..data/image_details.csv exists, load it
         if not os.path.exists("../data/image_details.csv"):
             # Load in mri data schema
             data = pd.read_csv(
-                "../data/adni_all_aibl_all_oasis_all_ixi_all.csv", low_memory=False)
+                "../data/adni_all_aibl_all_oasis_all_ixi_all.csv",
+                low_memory=False)
 
             # NOTE: Filters data for the first scan of each patient for AIBL project
             data = filter_data(data, scan_num=1, project="AIBL")
@@ -894,7 +914,8 @@ def main():
         # Count quantity for each unique scan resolution in dataset
         data_shape = data['SHAPE'].value_counts()
         print(
-            f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}")
+            f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
+        )
         labels = data['DIAGNOSIS'].tolist()
         labels = prepare_labels(labels)
         # Get all patient_ids from data

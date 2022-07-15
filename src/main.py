@@ -22,10 +22,10 @@ def print_title():
     # Read title.txt
     # If terminal size is small, print title
     if os.get_terminal_size().columns < 80:
-        with open("../small_title.txt") as file_object:
+        with open("../small_title.txt", encoding="utf-8") as file_object:
             print(file_object.read())
     else:
-        with open("../title.txt", "r") as file:
+        with open("../title.txt", "r", encoding="utf-8") as file:
             title = file.read()
         # Print title
         print(title)
@@ -52,10 +52,11 @@ def print_time_left():
     print(f"[TIME LEFT]\t{months} months, {weeks} weeks, {days} days")
     # Get today in string format
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    time_left = np.busday_count(today, '2022-09-01')*3
+    time_left = np.busday_count(today, '2022-09-01') * 3
     # Print working days
     print(
-        f"[WORK HOURS]\tAssuming you're working at least 3 hours a day, you have at least {time_left} working hours left")
+        f"[WORK HOURS]\tAssuming you're working at least 3 hours a day, you have at least {time_left} working hours left"
+    )
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -67,7 +68,9 @@ def main():
     # Prettiness for terminal
     print_title()
     print_time_left()
-    print("\n[INFO] Loading in image file")
+    from image_data.image_prepare import main as image_prepare
+    image_prepare()
+    return
     from image_data.image_data import main as imain
     print("[INFO] image file loaded")
     imain()

@@ -68,12 +68,11 @@ def main():
     # Prettiness for terminal
     print_title()
     print_time_left()
-    from image_data.image_prepare import main as image_prepare
-    image_prepare()
-    return
-    from image_data.image_data import main as imain
+    from image_data.image_prepare import prepare_images
+    prepare_images()
+    from image_data.image_data import main as deep_learning_images
     print("[INFO] image file loaded")
-    imain()
+    deep_learning_images()
     print("NOTE: TEMPORARY RETURN STATEMENT AT EOF")
     return
     # Menu

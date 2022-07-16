@@ -1,3 +1,21 @@
+<!-- 
+Miguel notes
+- Pre-trained model (Transfer Learning) : 
+- My own CNN model
+  - Neurons 
+  - epochs
+  - dis rate
+- LSTM model
+  - epochs
+  - dis rate
+- FRAME SELECTION
+  - Most area of scan
+  - Choose best middle frame of mri scan
+  - Average image of 10 or so frames
+- Max/Average Pooling
+- PCA (Principal Component Analysis)
+
+ -->
 # Alzheimer's Classification
 
 ![Python](https://img.shields.io/badge/Made%20by-my%20brain-blue)

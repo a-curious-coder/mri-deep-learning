@@ -1,50 +1,24 @@
 """ Process, transform, and load image data """
 import glob
 import os
+import time
 
-import cv2
 import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import skimage.segmentation as seg
 import tensorflow
 from skimage.transform import resize
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
-from tensorflow.keras import models
-from tensorflow.keras.layers import (Conv2D, Dense, Dropout, Flatten,
-                                     MaxPooling2D)
-from tensorflow.keras.optimizers import Adam
-from tensorflow.keras.utils import to_categorical
-import time
+from tensorflow.keras import layers, models, optimizers
+from tensorflow.keras import utils
 
 from misc import progress_bar
 from plot import *
 
 MRI_IMAGE_DIR = "../data/mri_images"
 EDA = False
-
-
-def handle_null_values(data):
-    """Handles null values from data
-
-    Args:
-        data (pd.DataFrame): original data
-
-    Returns:
-        pd.DataFrame: identifies and removes null/nan values
-    """
-    null_val_per_col = data.isnull().sum().to_frame(
-        name='counts').query('counts > 0')
-    # print(null_val_per_col)
-    # NOTE: Null value quantity is same as max number of rows
-    # NOTE: Thus, delete whole columns instead
-    # Get column names
-    columns = null_val_per_col.index.tolist()
-    # Drop columns with null values
-    data.drop(columns, axis=1, inplace=True)
-    return data
 
 
 def filter_data(data, scan_num=None, project=None):
@@ -55,7 +29,7 @@ def filter_data(data, scan_num=None, project=None):
     """
     # If the filtered data is not already available, run the data filtering
     print(
-        f"[*]\tRefining big data-frame to SCAN_NUM: {scan_num}, PROJECT: {project}"
+        f"[INFO] \tFiltering tabular data to SCAN_NUM: {scan_num}, PROJECT: {project}"
     )
     if not os.path.exists("../data/filtered_data.csv"):
         # Filter data by scan number and study
@@ -64,11 +38,16 @@ def filter_data(data, scan_num=None, project=None):
             data = data[data['PROJECT'] == project]
         if scan_num is not None:
             data = data[data['SCAN_NUM'] == scan_num]
-        # Perform eda
-        image_data_eda(data)
 
         # Remove rows/columns with null values
-        data = handle_null_values(data)
+        null_val_per_col = data.isnull().sum().to_frame(
+            name='counts').query('counts > 0')
+        # NOTE: Null value quantity is same as max number of rows
+        # NOTE: Thus, delete whole columns instead
+        # Get column names
+        columns = null_val_per_col.index.tolist()
+        # Drop columns with null values
+        data.drop(columns, axis=1, inplace=True)
 
         # NOTE: EDA says max age is 1072, remove ages more than 125
         # Remove rows where age is less than 125
@@ -87,7 +66,6 @@ def filter_data(data, scan_num=None, project=None):
         # Save filtered data
         data.to_csv("../data/filtered_data.csv", index=False)
     else:
-        print("[*]\tLoading filtered data-frame from file")
         data = pd.read_csv("../data/filtered_data.csv", low_memory=False)
     return data
 
@@ -153,24 +131,6 @@ def image_data_eda(data):
         data.describe().to_csv("../data/dataset-description.csv", index=True)
 
 
-def image_show(image, nrows=1, ncols=1, cmap='gray'):
-    """ Show the image presented in the parameters
-
-    Args:
-        image (np.array): image to be shown
-        nrows (int): number of rows in the image
-        ncols (int): number of columns in the image
-        cmap (str): colour map
-
-    Returns:
-        None
-    """
-    fig, ax = plt.subplots(nrows - nrows, ncols - ncols, figsize=(9, 9))
-    ax.imshow(image, cmap - ' gray ')
-    ax.axis('off')
-    return fig, ax
-
-
 def get_center_slices(mri_scan):
     """Returns the center slices of the scan
 
@@ -211,28 +171,6 @@ def resize_slices(slice_list, new_shape=(72, 72)):
     return [im1, im2, im3]
 
 
-def select_frame(patient_id: str):
-    """ Selects the frame of the MRI scan
-    Args:
-        image (np.array): MRI scan
-    """
-    # TODO: Train machine/deep learning model to perform better frame selection
-    #       versus choosing the center frame from each angle of the scan
-
-    mri_scan = get_mri_scan_data(patient_id)
-
-    # Extract slices from each angle
-    center_slices = get_center_slices(mri_scan)
-
-    # Resize the slices for the plots/images
-    im1, im2, im3 = resize_slices(center_slices, (250, 250))
-
-    show_slices([im1, im2, im3], patient_id)
-
-    # NOTE: Formats scan images for CNN
-    # im = np.array([im1,im2,im3]).T
-
-
 def show_slices(slices, name):
     """ Function to display row of image slices
 
@@ -256,7 +194,7 @@ def show_slices(slices, name):
     plt.savefig("../data/images/" + filename)
 
 
-def get_mri_scan(patient_id):
+def get_mri_scan(patient_id, data_dir=None):
     """Loads in MRI scan
 
     Parameters
@@ -269,11 +207,13 @@ def get_mri_scan(patient_id):
     numpy.ndarray
         MRI scan
     """
+    if data_dir is not None:
+        MRI_IMAGE_DIR = data_dir
     # print(f"[INFO] Loading MRI scan for patient {patient_id} ")
     # ! Have assumed each patient folder has only one MRI scan file
     files = os.listdir(MRI_IMAGE_DIR + "/" + patient_id)
     # Remove files that begin with .
-    files = [file for file in files if not file.startswith(".")]
+    files = [file for file in files if file.endswith(".nii")]
     if len(files) > 1:
         print(f"[!]\tMultiple MRI scan files found for patient: {patient_id}")
         for file in files:
@@ -288,7 +228,7 @@ def get_mri_scan(patient_id):
             return nib.load(MRI_IMAGE_DIR + "/" + patient_id + "/" + file)
 
 
-def get_mri_scan_data(patient_id):
+def get_mri_scan_data(patient_id, data_dir=None):
     """ Loads in MRI scan data
 
     Args:
@@ -297,7 +237,7 @@ def get_mri_scan_data(patient_id):
         numpy.ndarray: MRI scan data
     """
     # Load MRI scan
-    mri_scan = get_mri_scan(patient_id).get_fdata()
+    mri_scan = get_mri_scan(patient_id, data_dir).get_fdata()
 
     # If mri scan is 4D, remove 4th dimension as it's useless
     if len(mri_scan.shape) == 4:
@@ -352,47 +292,50 @@ def resize_images(images, shape):
     return [resize(image, shape) for image in images]
 
 
-def create_cnn2():
-    model = models.Sequential()
-    model.add(Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
-    model.add(MaxPooling2D((2, 2)))
-    model.add(Dropout(0.5))
-    model.add(Conv2D(70, (3, 3), activation='relu'))
-    model.add(MaxPooling2D((2, 2)))
-    model.add(Dropout(0.3))
-    model.add(Conv2D(50, (3, 3), activation='relu'))
-    model.add(Flatten())
-    model.add(Dense(3, activation="softmax"))
-
-    model.compile(Adam(learning_rate=0.001),
-                  "sparse_categorical_crossentropy",
-                  metrics=["sparse_categorical_accuracy"])
-
-    model.summary()
-    return model
-
-
 def create_cnn():
     """Create CNN model"""
     print("[INFO] Creating CNN model")
     # Create CNN model
     model = models.Sequential()
-    model.add(Conv2D(32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
-    # NOTE: MaxPooling2D is used to reduce the size of the image
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
-    model.add(Conv2D(32, (3, 3), activation="relu"))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Conv2D(64, (3, 3), activation="relu"))
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    # NOTE: Flatten is used to convert the image to a 1D array
-    model.add(Flatten())
-    # NOTE: Dense is used to add more layers to the CNN
-    model.add(Dense(64, activation="relu"))
-    model.add(Dense(1, activation="sigmoid"))
+    model.add(layers.Conv2D(
+        32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
+    # NOTE: layers.MaxPooling2D is used to reduce the size of the image
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
+    model.add(layers.Conv2D(32, (3, 3), activation="relu"))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(layers.Conv2D(64, (3, 3), activation="relu"))
+    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
+    # NOTE: layers.Flatten is used to convert the image to a 1D array
+    model.add(layers.Flatten())
+    # NOTE: layers.Dense is used to add more layers to the CNN
+    model.add(layers.Dense(64, activation="relu"))
+    model.add(layers.Dense(1, activation="sigmoid"))
     model.compile(loss="binary_crossentropy",
-                  optimizer="adam",
+                  optimizer="optimizers.Adam",
                   metrics=["accuracy"])
+    return model
+
+
+def create_cnn2():
+    """ Own CNN model """
+    model = models.Sequential()
+    model.add(layers.Conv2D(
+        100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Dropout(0.5))
+    model.add(layers.Conv2D(70, (3, 3), activation='relu'))
+    model.add(layers.MaxPooling2D((2, 2)))
+    model.add(layers.Dropout(0.3))
+    model.add(layers.Conv2D(50, (3, 3), activation='relu'))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(3, activation="softmax"))
+
+    model.compile(optimizers.Adam(learning_rate=0.001),
+                  "sparse_categorical_crossentropy",
+                  metrics=["sparse_categorical_accuracy"])
+
+    model.summary()
     return model
 
 
@@ -512,26 +455,27 @@ def train_and_test(X_train, X_test, y_train, y_test):
         random.seed(seed)
 
         model = models.Sequential()
-        # NOTE: Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
+        # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
         model.add(
-            Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
-        # NOTE: MaxPooling2D is used to extract features and reduce the size of the image
-        model.add(MaxPooling2D((2, 2)))
-        # NOTE: Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
-        model.add(Dropout(0.5))
-        model.add(Conv2D(70, (3, 3), activation='relu'))
-        model.add(MaxPooling2D((2, 2)))
-        model.add(Dropout(0.3))
-        model.add(Conv2D(50, (3, 3), activation='relu'))
-        model.add(Flatten())
-        model.add(Dense(3, activation="softmax"))
+            layers.Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
+        # NOTE: layers.MaxPooling2D is used to extract features and reduce the size of the image
+        model.add(layers.MaxPooling2D((2, 2)))
+        # NOTE: layers.Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
+        model.add(layers.Dropout(0.5))
+        model.add(layers.Conv2D(70, (3, 3), activation='relu'))
+        model.add(layers.MaxPooling2D((2, 2)))
+        model.add(layers.Dropout(0.3))
+        model.add(layers.Conv2D(50, (3, 3), activation='relu'))
+        model.add(layers.Flatten())
+        model.add(layers.Dense(3, activation="softmax"))
 
-        model.compile(Adam(learning_rate=0.001),
+        model.compile(optimizers.Adam(learning_rate=0.001),
                       "sparse_categorical_crossentropy",
                       metrics=["sparse_categorical_accuracy"])
 
         model.summary()
 
+        print(history.history.keys())
         history = model.fit(X_train,
                             y_train,
                             epochs=5,
@@ -539,13 +483,13 @@ def train_and_test(X_train, X_test, y_train, y_test):
                             validation_split=0.1,
                             verbose=1)
         # Plot history stats to see if model is overfitting
-        # plot_history(history, seed + 5)
+        plot_history(history, seed + 5)
         score = model.evaluate(X_test, y_test, verbose=0)
         print(f'Test loss: {score[0]} / Test accuracy: {score[1]}')
         acc.append(score[1])
 
         test_predictions = model.predict(X_test)
-        test_label = to_categorical(y_test, 3)
+        test_label = utils.to_categorical(y_test, 3)
 
         true_label = np.argmax(test_label, axis=1)
 
@@ -652,7 +596,7 @@ def generate_dataset(patient_ids):
             if "all" in npfile:
                 continue
             all_arrays.append(np.load(npfile, allow_pickle=True))
-        # Flatten 2d array
+        # layers.Flatten 2d array
         all_arrays = [item for sublist in all_arrays for item in sublist]
         # Print length of all_arrays
         print(f"[INFO] Length of all_arrays: {len(all_arrays)}")
@@ -718,256 +662,82 @@ def prepare_dataset(data, labels, mode=0):
     return X_train, X_test, y_train, y_test
 
 
-def unused_passholder():
-    """ Function to passholder images"""
-
-    def get_n_mri_scans(n):
-        """ Loads a set number of mri scans from the data directory
-
-        Parameters
-        ----------  n : int
-            Number of scans to load
-
-        Returns
-        -------
-        list
-            MRI scans
-        """
-        # Load image_details
-        image_details = pd.read_csv('../data/image_details.csv',
-                                    low_memory=False)
-        # image_details equals where diagnosis is not MCI
-        image_details = image_details[image_details['diagnosis'] != 'MCI']
-
-        # Get first n names from image_details
-        patient_ids = image_details['name'].head(n).tolist()
-        patient_scans = [
-            get_mri_scan(patient_id) for patient_id in patient_ids
-        ]
-        # Get patient id classification from image_details
-        patient_diagnosis = image_details.loc[
-            image_details['name'].isin(patient_ids), 'diagnosis']
-
-        return zip(patient_ids, patient_diagnosis, patient_scans)
-
-    def train_cnn(data):
-        """Trains CNN to classify best frame of MRI scan for classification model
-
-        Parameters
-        ----------
-        data : list
-            List of tuples containing patient_id, diagnosis, and MRI scan
-        """
-
-        # Read in all MRI scans using patient IDs from data
-        mri_scans = get_mri_scans(data['PATIENT_ID'])
-        # Remove last 64 frames from each MRI scan
-        mri_scans = [(patient_id, diagnosis, scan[:-64])
-                     for patient_id, diagnosis, scan in mri_scans]
-        # Remove first 64 frames from each MRI scan
-        mri_scans = [(patient_id, diagnosis, scan[64:])
-                     for patient_id, diagnosis, scan in mri_scans]
-        # Detect which frame has largest surface area
-        mri_scans = [(patient_id, diagnosis, scan[np.argmax(scan.sum(axis=1))])
-                     for patient_id, diagnosis, scan in mri_scans]
-
-    def find_bounding_box(image):
-        """Finds bounding box of image
-
-        Parameters
-        ----------
-        image : numpy.ndarray
-            Image to find bounding box of
-
-        Returns
-        -------
-        numpy.ndarray
-            Bounding box of image
-        """
-        # Find bounding box of image
-        bounding_box = np.zeros(image.shape)
-        bounding_box[image > 0] = 1
-        # Find bounding box of image
-        bounding_box = np.argwhere(bounding_box)
-        # Find bounding box of image
-        bounding_box = np.min(bounding_box, axis=0)
-        # Find bounding box of image
-        bounding_box = np.max(bounding_box, axis=0)
-        # Return bounding box
-        return bounding_box
-
-    def strip_skull_from_mri(image):
-        """Strips skull from MRI scan
-        TODO: Incomplete
-
-        Parameters
-        ----------
-        image : numpy.ndarray
-        """
-        image_path = "plots/F/AD/S232906.png"
-        image = cv2.imread(image_path)
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        # Convert to float
-        image = image.astype(float)
-        # Rescale gray scale between 0-255
-        image = (image - image.min()) / (image.max() - image.min())
-        # Convert to uint8
-        image = (image * 255).astype(np.uint8)
-        # show_image("gray", image, "gray")
-        # to binary using Otsu's method
-        # Threshold the image
-        ret, thresh_custom = cv2.threshold(image, 0, 255,
-                                           cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        # ShowImage ( " Applying Otsu ' , thresh_custom , ' gray " )
-        points = circle_points(200, [128, 128], 35)[:-1]
-        # fig , ax image_show ( gray )
-        # ax.plot ( points [ :, 0 ] , points [ :, 1 ] , ' --r ' , Lw = 3 )
-        snake = seg.active_contour(thresh_custom, points)
-        fig, ax = image_show(thresh_custom)
-        # ax.plot ( points [ :, 0 ] , points [ :, 1 ] , ' --r ' , Lw = 3 )
-        ax.plot(snake[:, 0], snake[:, 1], ' b ', lw=3)
-        # OTSU THRESHOLDING
-        _, binarized = cv2.threshold(filtered, 0, 255,
-                                     cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        print(binarized.shape, ' is Otsu thresholding value ')
-        # ShowImage ( ' Brain with Skull XXX ' , binarized , ' gray ' )
-        plt.imshow(binarized)
-
-    def circle_points(resolution, center, radius):
-        """Generate points which define a circle on an image.Centre refers to the centre of the circle"""
-        radians = np.linspace(0, 2 * np.pi, resolution)
-        c = center[1] + radius * np.cos(radians)  # polar co - ordinates
-        r = center[0] + radius * np.sin(radians)
-        return np.array([c, r]).T
-
-    def compare_mri_images(image_details):
-        """ Compares images from different scans """
-        details = []
-        images = []
-
-        print("Diagnosis\tFrequency")
-        # For each unique diagnosis
-        for diagnosis in image_details['diagnosis'].unique():
-            temp = image_details[image_details['diagnosis'] == diagnosis]
-            print(f"{diagnosis}\t{len(temp)}")
-            # Get patient id
-            patient_id = temp.head(1)['name'].values[0]
-            # Append patient's details
-            details.append(temp.head(1))
-            # Load MRI scan from patient_id
-            image = get_mri_scan(patient_id)
-            # Rearrange 3D array
-            # slices = sitk.GetArrayFromImage(image)
-            # plot_mri_image(patient_id, patient_diagnosis, slices)
-            # Append rearranged image format to images
-            images.append(slices)
-
-    def show_image(title, img, ctype):
-        plt.figure(figsize=(10, 10))
-        if ctype == 'bgr':
-            b, g, r = cv2.split(img)
-            # get b , g , r
-            rgb_img = cv2.merge([r, g, b])
-            # switch it to rgb
-            plt.imshow(rgb_img)
-        elif ctype == "hsv":
-            rgb = cv2.cvtColor(img, cv2.COLOR_HSV2RGB)
-            plt.imshow(rgb)
-        elif ctype == "gray":
-            plt.imshow(img, cmap="gray")
-        elif ctype == "rgb":
-            plt.imshow(img)
-        else:
-            raise Exception("Unknown colour")
-        plt.axis('off')
-        plt.title(title)
-        plt.show()
-
-    pass
-
-
-def TwoD_SNE():
-    """ 2D t-SNE on image data"""
-    pass
-
-
 def main():
     """Image data classification"""
-    # TODO: Skull stripping
-    # TODO: Effective frame selection
-    try:
-        print("🅸 🅼 🅰 🅶 🅴 🅼 🅾 🅳 🅴 🅻")
-        if not os.path.exists("../data/image_details.csv"):
-            # Load in mri data schema
-            data = pd.read_csv(
-                "../data/adni_all_aibl_all_oasis_all_ixi_all.csv",
-                low_memory=False)
 
-            # NOTE: Filters data for the first scan of each patient for AIBL project
-            data = filter_data(data, scan_num=1, project="AIBL")
+    print("[INFO] Image data classification")
+    if not os.path.exists("../data/image_details.csv"):
+        # Load in mri data schema
+        data = pd.read_csv(
+            "../data/adni_all_aibl_all_oasis_all_ixi_all.csv",
+            low_memory=False)
 
-            # Create a tabular representation of the classification for each image in the data
-            data = tabularise_image_data(data)
-        else:
-            data = pd.read_csv("../data/image_details.csv")
+        # NOTE: Filters data for the first scan of each patient for AIBL project
+        data = filter_data(data, scan_num=1, project="AIBL")
 
-        # Count quantity for each unique scan resolution in dataset
-        data_shape = data['SHAPE'].value_counts()
-        print(
-            f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
-        )
-        labels = data['DIAGNOSIS'].tolist()
-        labels = prepare_labels(labels)
-        # Get all patient_ids from data
-        patient_ids = data['NAME'].unique()
+        # Create a tabular representation of the classification for each image in the data
+        data = tabularise_image_data(data)
+    else:
+        data = pd.read_csv("../data/image_details.csv")
 
-        # Generate dataset
-        generate_dataset(patient_ids)
-        # Load all.npy file
-        dataset = np.load("../data/dataset/all.npy", allow_pickle=True)
+    # Count quantity for each unique scan resolution in dataset
+    data_shape = data['SHAPE'].value_counts()
+    print(
+        f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
+    )
+    labels = data['DIAGNOSIS'].tolist()
+    labels = prepare_labels(labels)
+    # Get all patient_ids from data
+    patient_ids = data['NAME'].unique()
 
-        # Delete all other .npy files
-        # for npfile in glob.glob("../data/dataset/*.npy"):
-        #     if npfile != "../data/dataset/all.npy":
-        #         os.remove(npfile)
-        # split dataset into train/test
-        print(f"[INFO] dataset shape: {dataset.shape}")
-        print("[INFO] Splitting dataset into train/test")
-        train_data = dataset[:int(len(dataset) * 0.8), :, :, :]
-        test_data = dataset[:int(len(dataset) * 0.2), :, :, :]
-        train_labels = labels[:int(len(dataset) * 0.8)]
-        test_labels = labels[:int(len(dataset) * 0.2)]
-        print(type(labels), type(labels[0]))
-        train_and_test(train_data, test_data, train_labels, test_labels)
-        # Train CNN on dataset
-        # train_cnn(train_data, train_labels)
-        # Test CNN on dataset
-        # test_cnn(test_data, test_labels)
-        # Train CNN to identify best frame(s) of MRI scans
-        # train_cnn(data)
-        # get_best_mri_frame()
-        # ! Compare MRI images from each diagnosis
-        # compare_mri_images(data)
-        # Save the same slice of each patient's MRI scan to file
-        # for index, row in data.iterrows():
-        #     progress_bar(index, data.shape[0])
-        #     patient_id = row['NAME']
-        #     patient_diagnosis = row['DIAGNOSIS']
-        #     image = get_mri_scan(patient_id)
-        #     # strip_skull_from_mri(image)
-        #     # Load in image
-        #     slices = sitk.GetArrayFromImage(image)
-        #     single_slice = slices[128]
-        #     # ! Figure out which slice is most appropriate per patient
-        #     im = Image.fromarray(single_slice)
-        #     im = im.convert("RGB")
+    # Generate dataset
+    generate_dataset(patient_ids)
+    # Load all.npy file
+    dataset = np.load("../data/dataset/all.npy", allow_pickle=True)
 
-        #     im.save(
-        #         f"plots/{row['GENDER']}/{patient_diagnosis}/{patient_id}.jpg")
-        # plotted = plot_mri_slice(patient_id, patient_diagnosis, slices[128], directory=f"plots/{row['GENDER']}")
-    except KeyboardInterrupt as keyboard_interrupt:
-        print("[EXIT] User escaped")
+    # Delete all other .npy files
+    # for npfile in glob.glob("../data/dataset/*.npy"):
+    #     if npfile != "../data/dataset/all.npy":
+    #         os.remove(npfile)
+    # split dataset into train/test
+    print(f"[INFO] dataset shape: {dataset.shape}")
+    print("[INFO] Splitting dataset into train/test")
+    train_data = dataset[:int(len(dataset) * 0.8), :, :, :]
+    test_data = dataset[:int(len(dataset) * 0.2), :, :, :]
+    train_labels = labels[:int(len(dataset) * 0.8)]
+    test_labels = labels[:int(len(dataset) * 0.2)]
+    print(type(labels), type(labels[0]))
+    train_and_test(train_data, test_data, train_labels, test_labels)
+    # Train CNN on dataset
+    # train_cnn(train_data, train_labels)
+    # Test CNN on dataset
+    # test_cnn(test_data, test_labels)
+    # Train CNN to identify best frame(s) of MRI scans
+    # train_cnn(data)
+    # get_best_mri_frame()
+    # ! Compare MRI images from each diagnosis
+    # compare_mri_images(data)
+    # Save the same slice of each patient's MRI scan to file
+    # for index, row in data.iterrows():
+    #     progress_bar(index, data.shape[0])
+    #     patient_id = row['NAME']
+    #     patient_diagnosis = row['DIAGNOSIS']
+    #     image = get_mri_scan(patient_id)
+    #     # strip_skull_from_mri(image)
+    #     # Load in image
+    #     slices = sitk.GetArrayFromImage(image)
+    #     single_slice = slices[128]
+    #     # ! Figure out which slice is most appropriate per patient
+    #     im = Image.fromarray(single_slice)
+    #     im = im.convert("RGB")
+
+    #     im.save(
+    #         f"plots/{row['GENDER']}/{patient_diagnosis}/{patient_id}.jpg")
+    # plotted = plot_mri_slice(patient_id, patient_diagnosis, slices[128], directory=f"plots/{row['GENDER']}")
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt as keyboard_interrupt:
+        print("[EXIT] User escaped")

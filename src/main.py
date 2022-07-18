@@ -70,9 +70,8 @@ def main():
     print_time_left()
     from image_data.image_prepare import prepare_images
     prepare_images()
-    from image_data.image_data import main as deep_learning_images
-    print("[INFO] image file loaded")
-    deep_learning_images()
+    from image_data.image_data import image_data_classification
+    image_data_classification()
     print("NOTE: TEMPORARY RETURN STATEMENT AT EOF")
     return
     # Menu

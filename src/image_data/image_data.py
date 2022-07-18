@@ -85,34 +85,59 @@ def tabularise_image_data(data=None):
     ]
 
     info = []
-    # Create batches of patient_ids
-    batches = [patient_ids[i:i + 10] for i in range(0, len(patient_ids), 10)]
-    print(f"{len(patient_ids)} scans")
-    for batch, patient_ids in enumerate(batches):
-        print(f"[*]\tLoading MRI scans Batch {batch + 1}")
+    batchmode = False
+    if batchmode:
+        # Create batches of patient_ids
+        batches = [
+            patient_ids[i:i + 10] for i in range(0, len(patient_ids), 10)
+        ]
+        print(f"{len(patient_ids)} scans")
+        for batch, patient_ids in enumerate(batches):
+            print(f"[*]\tLoading MRI scans Batch {batch + 1}")
+            # Load MRI scans to memory
+            images = get_mri_scans(patient_ids)
+
+            # Image resolutions to evidence image is loaded
+            # image_shapes = [image.GetSize() for image in images]
+            image_shapes = [image.shape for image in images]
+
+            # Using patient names from directory's folder names, filter dataframe
+            patients = data[data['PATIENT_ID'].isin(patient_ids)]
+
+            # Get classification results for each patient in dataframe
+            classifications = list(patients['GROUP'])
+            # Get genders of each patient
+            genders = list(patients['GENDER'])
+            # Bring data together into single dataframe
+            temp = pd.DataFrame({
+                "NAME": patient_ids,
+                "SHAPE": image_shapes,
+                "GENDER": genders,
+                "DIAGNOSIS": classifications
+            })
+            info.append(temp)
+        final = pd.concat(info, axis=0, ignore_index=False)
+    else:
+        print(f"[*]\tLoading all MRI scans")
         # Load MRI scans to memory
         images = get_mri_scans(patient_ids)
 
         # Image resolutions to evidence image is loaded
-        # image_shapes = [image.GetSize() for image in images]
         image_shapes = [image.shape for image in images]
-
         # Using patient names from directory's folder names, filter dataframe
         patients = data[data['PATIENT_ID'].isin(patient_ids)]
-
         # Get classification results for each patient in dataframe
         classifications = list(patients['GROUP'])
         # Get genders of each patient
         genders = list(patients['GENDER'])
+
         # Bring data together into single dataframe
-        temp = pd.DataFrame({
+        final = pd.DataFrame({
             "NAME": patient_ids,
             "SHAPE": image_shapes,
             "GENDER": genders,
             "DIAGNOSIS": classifications
         })
-        info.append(temp)
-    final = pd.concat(info, axis=0, ignore_index=False)
     # Save dataframe to file
     final.to_csv('../data/image_details.csv', index=False)
 
@@ -219,6 +244,9 @@ def get_mri_scan(patient_id, data_dir=None):
         for file in files:
             print(file[:-10])
         return
+    if len(files) == 0:
+        print(f"[!]\tNo MRI scan file found for patient: {patient_id}")
+        return
 
     for file in files:
         # If file is an MRI scan (With .nii extension)
@@ -259,7 +287,9 @@ def get_mri_scans(patient_ids: list):
     list
         MRI Scans
     """
-    return [get_mri_scan(patient_id) for patient_id in patient_ids]
+    return [
+        get_mri_scan(patient_id, MRI_IMAGE_DIR) for patient_id in patient_ids
+    ]
 
 
 def get_mri_scans_data(patient_ids: list):
@@ -275,7 +305,10 @@ def get_mri_scans_data(patient_ids: list):
     list
         MRI Scans
     """
-    return [get_mri_scan_data(patient_id) for patient_id in patient_ids]
+    return [
+        get_mri_scan_data(patient_id, MRI_IMAGE_DIR)
+        for patient_id in patient_ids
+    ]
 
 
 def resize_images(images, shape):
@@ -297,8 +330,8 @@ def create_cnn():
     print("[INFO] Creating CNN model")
     # Create CNN model
     model = models.Sequential()
-    model.add(layers.Conv2D(
-        32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
+    model.add(
+        layers.Conv2D(32, (3, 3), activation="relu", input_shape=(72, 72, 3)))
     # NOTE: layers.MaxPooling2D is used to reduce the size of the image
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
     # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
@@ -320,8 +353,8 @@ def create_cnn():
 def create_cnn2():
     """ Own CNN model """
     model = models.Sequential()
-    model.add(layers.Conv2D(
-        100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
+    model.add(
+        layers.Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Dropout(0.5))
     model.add(layers.Conv2D(70, (3, 3), activation='relu'))
@@ -457,7 +490,9 @@ def train_and_test(X_train, X_test, y_train, y_test):
         model = models.Sequential()
         # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
         model.add(
-            layers.Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
+            layers.Conv2D(100, (3, 3),
+                          activation='relu',
+                          input_shape=(72, 72, 3)))
         # NOTE: layers.MaxPooling2D is used to extract features and reduce the size of the image
         model.add(layers.MaxPooling2D((2, 2)))
         # NOTE: layers.Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
@@ -534,6 +569,57 @@ def normalise_data(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
 
+def generate_data_batch(patient_ids, batch):
+    """ Generates a batch of data from the given patient IDs
+
+    Args:
+        patient_ids (list): List of patient IDs
+        batch (int): Batch size
+    """
+    start = time.time()
+    # Check if this batch already exists
+    if os.path.exists(f"../data/dataset/{batch}_batch_data.npy"):
+        print(f"[INFO] Batch {batch} already saved")
+        return
+    # Initialise empty lists to store data
+    all_patients_slices = []
+    patient_slices = []
+    mri_scans_data = []
+
+    # Get mri scans for each patient
+    mri_scans_data = get_mri_scans_data(patient_ids)
+
+    # Get center frame from all angles of the scan NOTE: 3 slices
+    for mri_scan in mri_scans_data:
+        patient_slices.append(get_center_slices(mri_scan))
+
+    for count, center_slices in enumerate(patient_slices):
+        progress = count / len(patient_slices) * 100
+        print(f"[INFO]  {progress:.2f}%", end="\r")
+        # Resizing each center slice to 72/72
+        # TODO: Determine an optimal image size
+        # NOTE: Could it be plausible to suggest a size closest to native scan resolution is best?
+        #   Maintain as much quality?
+
+        # Normalise each center slice pixel in image between 0-1
+        for index, slice in enumerate(center_slices):
+            # normalise values in slice
+            center_slices[index] = normalise_data(slice)
+
+        im1, im2, im3 = resize_slices(center_slices, (72, 72))
+        # Convert these image slices of scan to concatenated np array for CNN
+        all_angles = np.array([im1, im2, im3]).T
+        # print(type(all_angles))
+        all_patients_slices.append(all_angles)
+    # Save all_patients_slices data-set to file
+    np.save(f"../data/dataset/{batch}_batch_data.npy",
+            all_patients_slices,
+            allow_pickle=True)
+    print(
+        f"[INFO]  Batch {batch} containing {len(patient_ids)} saved\t{time.time()-start:.2f}s"
+    )
+
+
 def generate_dataset(patient_ids):
     """ Generates dataset for CNN
 
@@ -541,66 +627,36 @@ def generate_dataset(patient_ids):
         patient_ids (list): patient IDs
     """
     batch = "all"
-    # if ../data/dataset/all.npy doesn't exist
-    if not os.path.exists(f"../data/dataset/{batch}.npy"):
-        print("[INFO] Generating image dataset")
-        # Create final data-set for classification
-        # Split patient_ids into batches of 10
-        batches = np.array_split(patient_ids, len(patient_ids) // 10)
-        for batch, patient_ids in enumerate(batches):
-            start = time.time()
-            # If batch already exists, don't rewrite it
-            if os.path.exists(f"../data/dataset/{batch}_batch_data.npy"):
-                print(
-                    f"[INFO] Batch {batch} already saved\t{time.time()-start:.2f}s"
-                )
-                continue
-            final = []
-            all_mri_center_slices = []
+    batchmode = True
+    n = 40
+    if batchmode:
+        # !If the dataset npy file doesn't exist, create batches of npy files and concatenate them
+        if not os.path.exists(f"../data/dataset/{batch}.npy"):
+            print("[INFO] Generating image dataset")
+            # Split patient_ids into n batches
+            batches = np.array_split(
+                patient_ids,
+                len(patient_ids) // (len(patient_ids) // n))
 
-            # Get mri scans for each patient
-            mri_scans_data = get_mri_scans_data(patient_ids)
+            print(f"[INFO] Batches: {len(batches)}")
+            # For each batch of patient ids create a npy file containing the best image slices from each scan
+            for batch, patient_ids in enumerate(batches):
+                generate_data_batch(patient_ids, batch)
 
-            # Get center frame of each angle of the scan
-            for mri_scan in mri_scans_data:
-                all_mri_center_slices.append(get_center_slices(mri_scan))
-
-            for i, center_slices in enumerate(all_mri_center_slices):
-                print(f"{i/len(all_mri_center_slices)*100}%", end="\r")
-                # Resizing each center slice to 72/72
-                # TODO: Determine an optimal image size
-                # NOTE: Could it be plausible to suggest a size closest to native scan resolution is best?
-                #   Maintain as much quality?
-
-                # Normalise each center slice pixel in image between 0-1
-                for index, slice in enumerate(center_slices):
-                    # normalise values in slice
-                    center_slices[index] = normalise_data(slice)
-
-                im1, im2, im3 = resize_slices(center_slices, (72, 72))
-                # Convert these image slices of scan to concatenated np array for CNN
-                all_angles = np.array([im1, im2, im3]).T
-                # print(type(all_angles))
-                final.append(all_angles)
-            # Save final data-set to file
-            np.save(f"../data/dataset/{batch}_batch_data.npy",
-                    final,
-                    allow_pickle=True)
-            print(f"[INFO] Batch {batch} saved\t{time.time()-start:.2f}s")
-
-        npfiles = glob.glob("../data/dataset/*.npy")
-        npfiles.sort()
-        # Merge all .npy files into one file
-        all_arrays = []
-        for npfile in npfiles:
-            if "all" in npfile:
-                continue
-            all_arrays.append(np.load(npfile, allow_pickle=True))
-        # layers.Flatten 2d array
-        all_arrays = [item for sublist in all_arrays for item in sublist]
-        # Print length of all_arrays
-        print(f"[INFO] Length of all_arrays: {len(all_arrays)}")
-        np.save("../data/dataset/all.npy", all_arrays)
+            print("[INFO]  Merging batches")
+            npfiles = glob.glob("../data/dataset/*.npy")
+            npfiles.sort()
+            # Merge all .npy files into one file
+            all_arrays = []
+            for npfile in npfiles:
+                if "all" in npfile:
+                    continue
+                all_arrays.append(np.load(npfile, allow_pickle=True))
+            # layers.Flatten 2d array
+            all_arrays = [item for sublist in all_arrays for item in sublist]
+            # Print length of all_arrays
+            print(f"[INFO] Length of all_arrays: {len(all_arrays)}")
+            np.save("../data/dataset/all.npy", all_arrays)
 
 
 def prepare_labels(labels, mode=0):
@@ -662,15 +718,15 @@ def prepare_dataset(data, labels, mode=0):
     return X_train, X_test, y_train, y_test
 
 
-def main():
+def image_data_classification():
     """Image data classification"""
+    global MRI_IMAGE_DIR
+    MRI_IMAGE_DIR = "../data/mri_images"
 
     print("[INFO] Image data classification")
     if not os.path.exists("../data/image_details.csv"):
         # Load in mri data schema
-        data = pd.read_csv(
-            "../data/adni_all_aibl_all_oasis_all_ixi_all.csv",
-            low_memory=False)
+        data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
 
         # NOTE: Filters data for the first scan of each patient for AIBL project
         data = filter_data(data, scan_num=1, project="AIBL")
@@ -682,14 +738,16 @@ def main():
 
     # Count quantity for each unique scan resolution in dataset
     data_shape = data['SHAPE'].value_counts()
-    print(
-        f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
-    )
+    # print(
+    #     f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
+    # )
     labels = data['DIAGNOSIS'].tolist()
     labels = prepare_labels(labels)
     # Get all patient_ids from data
     patient_ids = data['NAME'].unique()
-
+    # If dataset folder doesn't exist, create it
+    if not os.path.exists("../data/dataset"):
+        os.mkdir("../data/dataset")
     # Generate dataset
     generate_dataset(patient_ids)
     # Load all.npy file

@@ -29,44 +29,41 @@ def filter_data(data, scan_num=None, project=None):
     """
     # If the filtered data is not already available, run the data filtering
     print(
-        f"[INFO] \tFiltering tabular data to SCAN_NUM: {scan_num}, PROJECT: {project}"
+        f"[INFO]  Filtering tabular data to SCAN_NUM: {scan_num}, PROJECT: {project}"
     )
-    if not os.path.exists("../data/filtered_data.csv"):
-        # Filter data by scan number and study
-        # if PROJECT is not none
-        if project is not None:
-            data = data[data['PROJECT'] == project]
-        if scan_num is not None:
-            data = data[data['SCAN_NUM'] == scan_num]
+    # Filter data by scan number and study
+    # if PROJECT is not none
+    if project is not None:
+        data = data[data['PROJECT'] == project]
+    if scan_num is not None:
+        data = data[data['SCAN_NUM'] == scan_num]
 
-        # Remove rows/columns with null values
-        null_val_per_col = data.isnull().sum().to_frame(
-            name='counts').query('counts > 0')
-        # NOTE: Null value quantity is same as max number of rows
-        # NOTE: Thus, delete whole columns instead
-        # Get column names
-        columns = null_val_per_col.index.tolist()
-        # Drop columns with null values
-        data.drop(columns, axis=1, inplace=True)
+    # Remove rows/columns with null values
+    null_val_per_col = data.isnull().sum().to_frame(
+        name='counts').query('counts > 0')
+    # Drop columns with null values
+    columns = null_val_per_col.index.tolist()
+    data.drop(columns, axis=1, inplace=True)
 
-        # NOTE: EDA says max age is 1072, remove ages more than 125
-        # Remove rows where age is less than 125
-        data = data[data['AGE'] < 125]
+    # NOTE: EDA says max age is 1072, remove ages more than 125
+    # Remove rows where age is less than 125
+    data = data[data['AGE'] < 125]
 
-        # Remove irrelevant columns to this data
-        del data['PROJECT']
-        del data['SCAN_NUM']
+    # Remove irrelevant columns to this data
+    del data['PROJECT']
+    del data['SCAN_NUM']
 
-        # Extract patient ids from each directory path
-        patients = [txt.split("\\")[-1] for txt in data['Path']]
-        # Drop path column
-        del data['Path']
-        # Replace path values with patient ids
-        data['PATIENT_ID'] = patients
-        # Save filtered data
-        data.to_csv("../data/filtered_data.csv", index=False)
-    else:
-        data = pd.read_csv("../data/filtered_data.csv", low_memory=False)
+    # Extract patient ids from each directory path
+    patients = [txt.split("\\")[-1] for txt in data['Path']]
+    # Drop path column
+    del data['Path']
+    # Replace path values with patient ids
+    data['PATIENT_ID'] = patients
+    # Move patient_id to the front of the dataframe
+    data = data[['PATIENT_ID'] + data.columns.tolist()[1:-1]]
+    # Sort data by patient id
+    data.sort_values(by=['PATIENT_ID'], inplace=True)
+
     return data
 
 
@@ -232,6 +229,7 @@ def get_mri_scan(patient_id, data_dir=None):
     numpy.ndarray
         MRI scan
     """
+    global MRI_IMAGE_DIR
     if data_dir is not None:
         MRI_IMAGE_DIR = data_dir
     # print(f"[INFO] Loading MRI scan for patient {patient_id} ")
@@ -256,7 +254,7 @@ def get_mri_scan(patient_id, data_dir=None):
             return nib.load(MRI_IMAGE_DIR + "/" + patient_id + "/" + file)
 
 
-def get_mri_scan_data(patient_id, data_dir=None):
+def get_mri_data(patient_id, data_dir=None):
     """ Loads in MRI scan data
 
     Args:
@@ -306,7 +304,7 @@ def get_mri_scans_data(patient_ids: list):
         MRI Scans
     """
     return [
-        get_mri_scan_data(patient_id, MRI_IMAGE_DIR)
+        get_mri_data(patient_id, MRI_IMAGE_DIR)
         for patient_id in patient_ids
     ]
 
@@ -372,7 +370,7 @@ def create_cnn2():
     return model
 
 
-def plot_history(history, epochs):
+def plot_history(history, guid):
     """Plot training history
 
     Args:
@@ -383,30 +381,25 @@ def plot_history(history, epochs):
         None
     """
     # Plot training history
-    plt.plot(np.arange(0, epochs),
-             history.history["sparse_categorical_accuracy"],
-             label="train_acc")
-    plt.plot(np.arange(0, epochs),
-             history.history["val_sparse_categorical_accuracy"],
-             label="val_acc")
-    plt.title("Training Accuracy")
-    plt.xlabel("Epochs")
-    plt.ylabel("Accuracy")
+    acc = history.history["acc"]
+    val_acc = history.history["val_acc"]
+    loss = history.history["loss"]
+    val_loss = history.history["val_loss"]
+
+    epochs = range(1, history.params["epochs"]+1)
+
+    plt.plot(epochs, acc, "bo", label="Training acc")
+    plt.plot(epochs, val_acc, "b", label="Validation acc")
+    plt.title("Training and validation accuracy")
     plt.legend()
-    # Save figure
-    plt.savefig(f"../data/images/training_accuracy_{epochs}.png")
-    # Reset plot
-    plt.clf()
-    plt.plot(np.arange(0, epochs), history.history["loss"], label="train_loss")
-    plt.plot(np.arange(0, epochs),
-             history.history["val_loss"],
-             label="val_loss")
-    plt.title("Training Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("Loss")
+    plt.savefig(f"../data/images/{guid}_acc.png")
+
+    plt.figure()
+    plt.plot(epochs, loss, "bo", label="Training loss")
+    plt.plot(epochs, val_loss, "b", label="Validation loss")
+    plt.title("Training and validation loss")
     plt.legend()
-    # Save figure
-    plt.savefig(f"../data/images/training_loss_{epochs}.png")
+    plt.savefig(f"../data/images/{guid}_loss.png")
 
 
 def train_cnn(data, labels):
@@ -492,7 +485,7 @@ def train_and_test(X_train, X_test, y_train, y_test):
         model.add(
             layers.Conv2D(100, (3, 3),
                           activation='relu',
-                          input_shape=(72, 72, 3)))
+                          input_shape=(150, 150, 3)))
         # NOTE: layers.MaxPooling2D is used to extract features and reduce the size of the image
         model.add(layers.MaxPooling2D((2, 2)))
         # NOTE: layers.Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
@@ -502,23 +495,28 @@ def train_and_test(X_train, X_test, y_train, y_test):
         model.add(layers.Dropout(0.3))
         model.add(layers.Conv2D(50, (3, 3), activation='relu'))
         model.add(layers.Flatten())
-        model.add(layers.Dense(3, activation="softmax"))
-
-        model.compile(optimizers.Adam(learning_rate=0.001),
-                      "sparse_categorical_crossentropy",
-                      metrics=["sparse_categorical_accuracy"])
+        # Add dense layer for binary classification
+        model.add(layers.Dense(1, activation="sigmoid"))
+        model.compile(loss="binary_crossentropy",
+                      optimizer=optimizers.Adam(learning_rate=0.001),
+                      metrics=["acc"])
+        # model.compile(optimizers.Adam(learning_rate=0.001),
+        #               "sparse_categorical_crossentropy",
+        #               metrics=["sparse_categorical_accuracy"])
 
         model.summary()
-
-        print(history.history.keys())
+        epochs = 2
+        batch_size = 32
         history = model.fit(X_train,
                             y_train,
-                            epochs=5,
-                            batch_size=32,
+                            epochs=epochs,
+                            batch_size=batch_size,
                             validation_split=0.1,
                             verbose=1)
+        print(history.history.keys())
+        guid = f"{seed}_{epochs}_{batch_size}"
         # Plot history stats to see if model is overfitting
-        plot_history(history, seed + 5)
+        plot_history(history, guid)
         score = model.evaluate(X_test, y_test, verbose=0)
         print(f'Test loss: {score[0]} / Test accuracy: {score[1]}')
         acc.append(score[1])
@@ -569,99 +567,9 @@ def normalise_data(data):
     return (data - np.min(data)) / (np.max(data) - np.min(data))
 
 
-def generate_data_batch(patient_ids, batch):
-    """ Generates a batch of data from the given patient IDs
-
-    Args:
-        patient_ids (list): List of patient IDs
-        batch (int): Batch size
-    """
-    start = time.time()
-    # Check if this batch already exists
-    if os.path.exists(f"../data/dataset/{batch}_batch_data.npy"):
-        print(f"[INFO] Batch {batch} already saved")
-        return
-    # Initialise empty lists to store data
-    all_patients_slices = []
-    patient_slices = []
-    mri_scans_data = []
-
-    # Get mri scans for each patient
-    mri_scans_data = get_mri_scans_data(patient_ids)
-
-    # Get center frame from all angles of the scan NOTE: 3 slices
-    for mri_scan in mri_scans_data:
-        patient_slices.append(get_center_slices(mri_scan))
-
-    for count, center_slices in enumerate(patient_slices):
-        progress = count / len(patient_slices) * 100
-        print(f"[INFO]  {progress:.2f}%", end="\r")
-        # Resizing each center slice to 72/72
-        # TODO: Determine an optimal image size
-        # NOTE: Could it be plausible to suggest a size closest to native scan resolution is best?
-        #   Maintain as much quality?
-
-        # Normalise each center slice pixel in image between 0-1
-        for index, slice in enumerate(center_slices):
-            # normalise values in slice
-            center_slices[index] = normalise_data(slice)
-
-        im1, im2, im3 = resize_slices(center_slices, (72, 72))
-        # Convert these image slices of scan to concatenated np array for CNN
-        all_angles = np.array([im1, im2, im3]).T
-        # print(type(all_angles))
-        all_patients_slices.append(all_angles)
-    # Save all_patients_slices data-set to file
-    np.save(f"../data/dataset/{batch}_batch_data.npy",
-            all_patients_slices,
-            allow_pickle=True)
-    print(
-        f"[INFO]  Batch {batch} containing {len(patient_ids)} saved\t{time.time()-start:.2f}s"
-    )
-
-
-def generate_dataset(patient_ids):
-    """ Generates dataset for CNN
-
-    Args:
-        patient_ids (list): patient IDs
-    """
-    batch = "all"
-    batchmode = True
-    n = 40
-    if batchmode:
-        # !If the dataset npy file doesn't exist, create batches of npy files and concatenate them
-        if not os.path.exists(f"../data/dataset/{batch}.npy"):
-            print("[INFO] Generating image dataset")
-            # Split patient_ids into n batches
-            batches = np.array_split(
-                patient_ids,
-                len(patient_ids) // (len(patient_ids) // n))
-
-            print(f"[INFO] Batches: {len(batches)}")
-            # For each batch of patient ids create a npy file containing the best image slices from each scan
-            for batch, patient_ids in enumerate(batches):
-                generate_data_batch(patient_ids, batch)
-
-            print("[INFO]  Merging batches")
-            npfiles = glob.glob("../data/dataset/*.npy")
-            npfiles.sort()
-            # Merge all .npy files into one file
-            all_arrays = []
-            for npfile in npfiles:
-                if "all" in npfile:
-                    continue
-                all_arrays.append(np.load(npfile, allow_pickle=True))
-            # layers.Flatten 2d array
-            all_arrays = [item for sublist in all_arrays for item in sublist]
-            # Print length of all_arrays
-            print(f"[INFO] Length of all_arrays: {len(all_arrays)}")
-            np.save("../data/dataset/all.npy", all_arrays)
-
-
 def prepare_labels(labels, mode=0):
-    """ Prepares labels for CNN
-
+    """ Prepares labels for
+        Multiclass or binary classification
     Args:
         labels (list): labels
         mode (int): translate labels according to mode
@@ -677,86 +585,63 @@ def prepare_labels(labels, mode=0):
         # Convert "AD" to 2
         labels = [2 if label == "AD" else label for label in labels]
     if mode == 1:
-        # Convert 0 to "NL"
-        labels = [0 if label == "NL" else label for label in labels]
-        # Convert 1 to "MCI"
-        labels = ["MCI" if label == 1 else label for label in labels]
-        # Convert 2 to "AD"
-        labels = ["AD" if label == 2 else label for label in labels]
+        # Convert 0 to "NL" else 1
+        labels = ["NL" if label == 0 else 1 for label in labels]
     return np.array(labels)
 
 
-def prepare_dataset(data, labels, mode=0):
-    """ Prepares the data best suited to model 
-        mode 0 : Leaves labels as they are
-        mode 1 : Change labels to NL versus other labels
-        mode 2 : Change labels to MCI versus other labels
-        mode 3 : Change labels to AD versus other labels
+def plot_image(image, label):
+    """ Plots an image and its label
+
     Args:
-        data (list): list of np arrays
-        mode (int): 0 for training, 1 for testing
-    Return:
+        image (np array): image
+        label (str): label
     """
-
-    if mode == 0:
-        # Split data into training and testing sets
-        X_train, X_test, y_train, y_test = train_test_split(data,
-                                                            y,
-                                                            test_size=0.2,
-                                                            random_state=42)
-
-    elif mode == 1:
-        # Normalize data
-        # data = normalize(data)
-        return data
-    else:
-        raise ValueError("Mode must be 0 or 1")
-
-    # Normalize data
-    # X_train =
-
-    return X_train, X_test, y_train, y_test
+    # Plot each channel separately
+    fig, axs = plt.subplots(1, 3, figsize=(15, 15))
+    axs[0].imshow(image[:, :, 0], cmap="gray")
+    axs[0].set_title("Axial")
+    axs[1].imshow(image[:, :, 1], cmap="gray")
+    axs[1].set_title("Coronal")
+    axs[2].imshow(image[:, :, 2], cmap="gray")
+    axs[2].set_title("Saggital")
+    # remove axis
+    for ax in axs:
+        ax.axis("off")
+    # Tight layout
+    fig.tight_layout()
+    # Sup title
+    fig.suptitle("Alzheimer's" if label == 1 else "Non-Alzheimer's")
+    # plt.show()
 
 
 def image_data_classification():
     """Image data classification"""
     global MRI_IMAGE_DIR
     MRI_IMAGE_DIR = "../data/mri_images"
-
     print("[INFO] Image data classification")
-    if not os.path.exists("../data/image_details.csv"):
-        # Load in mri data schema
-        data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
+    # if not os.path.exists("../data/image_details.csv"):
+    # Load in mri data schema
+    data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
+    # NOTE: Filters data for the first scan of each patient for AIBL project
+    data = filter_data(data, scan_num=1, project="AIBL")
+    # Save data to file
+    data.to_csv("../data/filtered_data.csv", index=False)
 
-        # NOTE: Filters data for the first scan of each patient for AIBL project
-        data = filter_data(data, scan_num=1, project="AIBL")
+    # Create a tabular representation of the classification for each image in the data
+    data = tabularise_image_data(data)
 
-        # Create a tabular representation of the classification for each image in the data
-        data = tabularise_image_data(data)
-    else:
-        data = pd.read_csv("../data/image_details.csv")
-
-    # Count quantity for each unique scan resolution in dataset
-    data_shape = data['SHAPE'].value_counts()
-    # print(
-    #     f"[INFO] {len(data)} total scans\n\tScans per resolution\n{data_shape}"
-    # )
     labels = data['DIAGNOSIS'].tolist()
-    labels = prepare_labels(labels)
-    # Get all patient_ids from data
-    patient_ids = data['NAME'].unique()
+    labels = prepare_labels(labels, mode=1)
+
     # If dataset folder doesn't exist, create it
     if not os.path.exists("../data/dataset"):
         os.mkdir("../data/dataset")
-    # Generate dataset
-    generate_dataset(patient_ids)
     # Load all.npy file
-    dataset = np.load("../data/dataset/all.npy", allow_pickle=True)
+    dataset = np.load("../data/all_slices.npy", allow_pickle=True)
 
-    # Delete all other .npy files
-    # for npfile in glob.glob("../data/dataset/*.npy"):
-    #     if npfile != "../data/dataset/all.npy":
-    #         os.remove(npfile)
+    # Print length of dataset
+    print(f"[INFO] Length of dataset: {len(dataset)}")
     # split dataset into train/test
     print(f"[INFO] dataset shape: {dataset.shape}")
     print("[INFO] Splitting dataset into train/test")
@@ -764,7 +649,8 @@ def image_data_classification():
     test_data = dataset[:int(len(dataset) * 0.2), :, :, :]
     train_labels = labels[:int(len(dataset) * 0.8)]
     test_labels = labels[:int(len(dataset) * 0.2)]
-    print(type(labels), type(labels[0]))
+    # Plot image from train_data
+    # plot_image(train_data[0], train_labels[0])
     train_and_test(train_data, test_data, train_labels, test_labels)
     # Train CNN on dataset
     # train_cnn(train_data, train_labels)

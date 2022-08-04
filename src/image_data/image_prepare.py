@@ -2,11 +2,9 @@
 import os
 import shutil
 import sys
-import time
 
 import numpy as np
 import pandas as pd
-
 from skimage.transform import resize
 
 
@@ -36,7 +34,7 @@ def resize_slices(slice_list, new_shape=(72, 72)):
     return [im1, im2, im3]
 
 
-def extract_files(dir_path, filetype):
+def get_files(dir_path, filetype):
     """Extract nii files from directory
 
     Args:
@@ -55,17 +53,42 @@ def extract_files(dir_path, filetype):
     return nii_files
 
 
-def prepare_images():
+def get_slices(mri_scan):
+    """Returns the center slices of the scan
+    Args:
+        scan (np.array): scan to be processed
+    Returns:
+        list: center slices of the scan
+    """
+    # Store mri_scan dimensions to individual variables
+    n_i, n_j, n_k = mri_scan.shape
+
+    # Calculate center frames for each scan
+    center_i = (n_i - 1) // 2
+    center_j = (n_j - 1) // 2
+    center_k = (n_k - 1) // 2
+
+    slice_0 = mri_scan[center_i, :, :]
+    slice_1 = mri_scan[:, center_j, :]
+    slice_2 = mri_scan[:, :, center_k]
+
+    return [slice_0, slice_1, slice_2]
+
+
+def prepare_images(image_size=(72, 72)):
     """ Main """
-    print("[INFO] Preparing images")
-    from image_data.image_data import (filter_data, get_center_slices,
-                                       get_mri_data)
+    print(f"[INFO] Preparing mri slices of size {image_size}")
+    # if all_slices.npy exists, return
+    if os.path.isfile(f"../data/dataset/all_slices_{image_size[0]}.npy"):
+        print("[INFO]  Images were already prepared")
+        return
+    from image_data.image_data import filter_data, get_mri_data
 
     # Request folder name from user if AIBL folder doesn't exist
     if not os.path.exists("../AIBL"):
         print("AIBL Folder Doesn't exist")
         return
-    nii_files = extract_files("../AIBL", ".nii")
+    nii_files = get_files("../AIBL", ".nii")
     # Separate nii files by slash depending on OS
     nii_files = [nii_file.replace("\\", "/") for nii_file in nii_files]
 
@@ -116,32 +139,37 @@ def prepare_images():
         print(f"[INFO] \t{progress:.2f}%", end="\r")
         # if center slice doesn't exist
         if not os.path.exists(
-                f"../data/mri_images/{patient_id}/{patient_id}_center_slices.npy"
+                f"../data/mri_images/{patient_id}/{patient_id}_center_slices_{image_size[0]}.npy"
         ):
             # If MRI scan exists for patient
             if patient_dict[patient_id]:
                 # Get mri scan data
                 mri_data = get_mri_data(patient_id, "../data/mri_images")
+                if mri_data is None:
+                    continue
                 # Get center slices from nii files
-                center_slices = get_center_slices(mri_data)
+                center_slices = get_slices(mri_data)
                 # For every slice in center slices
                 for index, slice in enumerate(center_slices):
                     # Normalise slice in center slices
                     center_slices[index] = normalise_data(slice)
                 # Resize each slice
-                im1, im2, im3 = resize_slices(center_slices, (150, 150))
+                im1, im2, im3 = resize_slices(center_slices, image_size)
 
                 # Convert these image slices of scan to a concatenated np array
                 processed_slices = np.array([im1, im2, im3]).T
 
                 # Save center slices to npy file
                 np.save(
-                    f"../data/mri_images/{patient_id}/{patient_id}_center_slices.npy",
+                    f"../data/mri_images/{patient_id}/{patient_id}_center_slices_{image_size[0]}.npy",
                     processed_slices)
                 print(f"[INFO]  Saved {patient_id}'s slices")
 
     # List all .npy files in dataset
-    npy_files = extract_files("../data/mri_images", ".npy")
+    npy_files = get_files("../data/mri_images", ".npy")
+    # Filter npy_files to image_size
+    npy_files = [npy_file for npy_file in npy_files if npy_file.endswith(
+        f"_{image_size[0]}.npy")]
     # Count number of .npy files
     count = 0
     for npy_file in npy_files:
@@ -154,7 +182,8 @@ def prepare_images():
     npy_files = [np.load(npy_file, allow_pickle=True)
                  for npy_file in npy_files]
     # Save npy file
-    np.save("../data/all_slices.npy", npy_files, allow_pickle=True)
+    np.save(
+        f"../data/dataset/all_slices_{image_size[0]}.npy", npy_files, allow_pickle=True)
 
     print("[INFO] \tFinished preparing images")
 

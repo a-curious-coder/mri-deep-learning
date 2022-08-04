@@ -9,8 +9,8 @@ NOTE:   This and all dependent files have been coded under
 
 import datetime
 import os
-#!/usr/bin/env python
 import sys
+import time
 
 import numpy as np
 
@@ -68,12 +68,7 @@ def main():
     # Prettiness for terminal
     print_title()
     print_time_left()
-    from image_data.image_prepare import prepare_images
-    prepare_images()
-    from image_data.image_data import image_data_classification
-    image_data_classification()
-    print("NOTE: TEMPORARY RETURN STATEMENT AT EOF")
-    return
+
     # Menu
     if sys.argv[1:]:
         # Read in arg
@@ -94,13 +89,18 @@ def main():
     arg = arg.lower()
 
     if arg in ["image", "1"]:
-        from image_data.image_data import main as imain
-        imain()
+        start = time.time()
+        from image_data.image_data import image_data_classification
+        print(
+            f"[INFO] Image data file imported in {time.time() - start:.2f} seconds")
+        image_data_classification()
     elif arg in ["tabular", "2"]:
         from tabular_data.tabular_data import main as tmain
         tmain()
     elif arg in ["", "3", "exit"]:
         print("[EXIT]")
+    # elif arg in["4", "test"]:
+
     else:
         print(f"[ERROR] Invalid argument '{arg}'")
 

@@ -92,7 +92,8 @@ def main():
         start = time.time()
         from image_data.image_data import image_data_classification
         print(
-            f"[INFO] Image data file imported in {time.time() - start:.2f} seconds")
+            f"[INFO] Image data file imported in {time.time() - start:.2f} seconds"
+        )
         image_data_classification()
     elif arg in ["tabular", "2"]:
         from tabular_data.tabular_data import main as tmain

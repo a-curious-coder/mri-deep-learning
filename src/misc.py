@@ -21,10 +21,12 @@ def print_title(title):
 
 def prepare_dir_structure():
     """Creates necessary folders in preparation for data/models saved"""
-    directories = ["../plots", "../plots/confusion_matrices",
-                   "../plots/F", "../plots/F/NL", "../plots/F/MCI", "../plots/F/AD",
-                   "../plots/M", "../plots/M/NL", "../plots/M/MCI", "../plots/M/AD",
-                   "../models", "../data", "../optimal_parms"]
+    directories = [
+        "../plots", "../plots/confusion_matrices", "../plots/F",
+        "../plots/F/NL", "../plots/F/MCI", "../plots/F/AD", "../plots/M",
+        "../plots/M/NL", "../plots/M/MCI", "../plots/M/AD", "../models",
+        "../data", "../optimal_parms", "../data/results", "../data/history"
+    ]
 
     for directory in directories:
         if not os.path.isdir(directory):

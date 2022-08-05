@@ -53,7 +53,7 @@ def get_files(dir_path, filetype):
     return nii_files
 
 
-def get_slices(mri_scan):
+def get_center_slices(mri_scan):
     """Returns the center slices of the scan
     Args:
         scan (np.array): scan to be processed
@@ -75,11 +75,43 @@ def get_slices(mri_scan):
     return [slice_0, slice_1, slice_2]
 
 
-def prepare_images(image_size=(72, 72)):
+def get_average_center_slices(mri_scan):
+    """Returns the average of the middle 20 frames from scan
+    Args:
+        mri_scan (np.array): scan to be processed
+    Returns:
+        list: average center slices of the scan
+    """
+    # Store mri_scan dimensions to individual variables
+    n_i, n_j, n_k = mri_scan.shape
+
+    # Calculate center frames for each scan
+    center_i = (n_i - 1) // 2
+    center_j = (n_j - 1) // 2
+    center_k = (n_k - 1) // 2
+
+    # Get average of middle 20 frames
+    slice_0 = np.mean(mri_scan[center_i - 10:center_i + 10, :, :], axis=0)
+    slice_1 = np.mean(mri_scan[:, center_j - 10:center_j + 10, :], axis=0)
+    slice_2 = np.mean(mri_scan[:, :, center_k - 10:center_k + 10], axis=0)
+
+    return [slice_0, slice_1, slice_2]
+
+
+def get_area_slices(mri_scan):
+    """ Get frame from scan with the least background
+    Args:
+        mri_scan (np.array): scan to be processed
+    """
+    return None
+
+
+def prepare_images(image_size=(72, 72), slice_mode = "center"):
     """ Main """
+
     print(f"[INFO] Preparing mri slices of size {image_size}")
     # if all_slices.npy exists, return
-    if os.path.isfile(f"../data/dataset/all_slices_{image_size[0]}.npy"):
+    if os.path.isfile(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy"):
         print("[INFO]  Images were already prepared")
         return
     from image_data.image_data import filter_data, get_mri_data
@@ -132,14 +164,15 @@ def prepare_images(image_size=(72, 72)):
             if os.path.exists(f"../data/mri_images/{patient_id}"):
                 patient_dict[patient_id] = True
 
-    # ! Extract center slices from nii files in dataset
+    # ! Extract slices from mri scans in dataset
+    
     # for mri scan in dataset
     for count, patient_id in enumerate(patient_ids):
         progress = count / len(patient_ids) * 100
         print(f"[INFO] \t{progress:.2f}%", end="\r")
         # if center slice doesn't exist
         if not os.path.exists(
-                f"../data/mri_images/{patient_id}/{patient_id}_center_slices_{image_size[0]}.npy"
+                f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_slices_{image_size[0]}.npy"
         ):
             # If MRI scan exists for patient
             if patient_dict[patient_id]:
@@ -147,33 +180,46 @@ def prepare_images(image_size=(72, 72)):
                 mri_data = get_mri_data(patient_id, "../data/mri_images")
                 if mri_data is None:
                     continue
-                # Get center slices from nii files
-                center_slices = get_slices(mri_data)
+
+                # ! Get slices from image
+                if slice_mode == "center":
+                    slices = get_center_slices(mri_data)
+                elif slice_mode == "average_center":
+                    slices = get_average_center_slices(mri_data)
+                elif slice_mode == "area":
+                    slices = get_area_slices(mri_data)
+                
                 # For every slice in center slices
-                for index, slice in enumerate(center_slices):
+                for index, slice in enumerate(slices):
                     # Normalise slice in center slices
-                    center_slices[index] = normalise_data(slice)
+                    slices[index] = normalise_data(slice)
                 # Resize each slice
-                im1, im2, im3 = resize_slices(center_slices, image_size)
+                im1, im2, im3 = resize_slices(slices, image_size)
 
                 # Convert these image slices of scan to a concatenated np array
                 processed_slices = np.array([im1, im2, im3]).T
 
                 # Save center slices to npy file
                 np.save(
-                    f"../data/mri_images/{patient_id}/{patient_id}_center_slices_{image_size[0]}.npy",
+                    f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_slices_{image_size[0]}.npy",
                     processed_slices)
-                print(f"[INFO]  Saved {patient_id}'s slices")
+                print(f"[INFO]  Saved {patient_id}'s slices {count}/{len(patient_ids)}", end = "\r")
 
+    # ! Merge all slices into one file
     # List all .npy files in dataset
     npy_files = get_files("../data/mri_images", ".npy")
     # Filter npy_files to image_size
     npy_files = [npy_file for npy_file in npy_files if npy_file.endswith(
         f"_{image_size[0]}.npy")]
+    # Filter npy_files if name contains slice_mode
+    npy_files = [npy_file for npy_file in npy_files if slice_mode in npy_file]
+
     # Count number of .npy files
     count = 0
     for npy_file in npy_files:
-        filename = npy_file.split("/")[-2].split(".")[0]
+        # Replace slash depending on OS
+        npy_file = npy_file.replace("\\", "/")
+        filename = npy_file.split("/")[-2]
         if filename in patient_ids:
             count += 1
     print(
@@ -183,7 +229,7 @@ def prepare_images(image_size=(72, 72)):
                  for npy_file in npy_files]
     # Save npy file
     np.save(
-        f"../data/dataset/all_slices_{image_size[0]}.npy", npy_files, allow_pickle=True)
+        f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy", npy_files, allow_pickle=True)
 
     print("[INFO] \tFinished preparing images")
 

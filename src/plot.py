@@ -1,9 +1,9 @@
 from os.path import exists
 
+import os
 import numpy as np
 from plotly import express as px
 from plotly import graph_objs as go
-from plotly.subplots import make_subplots
 from skimage.transform import resize
 from skimage.util import montage
 # Import matplotlib
@@ -29,41 +29,6 @@ def smooth_curve(points, factor=0.8):
             smoothed_points.append(point)
     return smoothed_points
 
-# def plot_history(history, epochs):
-#     """ Plots CNN history accummulated during training
-
-#     Args:
-#         history (??): Model training history
-#     """
-#     fig = go.Figure()
-#     fig.add_trace(go.Scatter(x=epochs, y=history.history['loss'],
-#                              name='Training Loss',
-#                              marker_color='red'))
-#     fig.add_trace(go.Scatter(x=epochs, y=history.history['val_loss'],
-#                              name='Validation Loss',
-#                              marker_color='blue'))
-#     fig.add_trace(go.Scatter(x=epochs, y=history.history['sparse_categorical_accuracy'],
-#                              name='Training Accuracy',
-#                              marker_color='green'))
-#     fig.add_trace(go.Scatter(x=epochs, y=history.history['val_sparse_categorical_accuracy'],
-#                              name='Validation Accuracy',
-#                              marker_color='orange'))
-#     fig.update_layout(height=600, width=1000, title=dict(
-#         text="Training and Validation Loss and Accuracy",
-#         x=0.5,
-#         y=0.9,
-#         xanchor="center",
-#         yanchor="top"))
-#     saved = False
-#     num = 1
-#     name = f"../plots/history_{num}.png"
-#     while not saved:
-#         if not exists(name):
-#             fig.write_image(name)
-#             saved = True
-#         num += 1
-#         name = f"../plots/history_{num}.png"
-
 
 def plot_history(history=None, guid=None):
     """Plot training history
@@ -87,21 +52,20 @@ def plot_history(history=None, guid=None):
         loss = loss_df["loss"].values
         val_loss = loss_df["val_loss"].values
     else:
-        # Plot training history
         acc = history["acc"]
         val_acc = history["val_acc"]
         loss = history["loss"]
         val_loss = history["val_loss"]
 
         # Save accuracies to csv file
-        with open(f"../data/results/acc_{guid}.csv", "w") as f:
+        with open(f"../data/results/acc_{guid}.csv", "w", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["epoch", "acc", "val_acc"])
             for i in range(len(acc)):
                 writer.writerow([i, acc[i], val_acc[i]])
 
         # Save losses to csv file
-        with open(f"../data/results/loss_{guid}.csv", "w") as f:
+        with open(f"../data/results/loss_{guid}.csv", "w", encoding="utf-8") as f:
             writer = csv.writer(f)
             writer.writerow(["epoch", "loss", "val_loss"])
             for i in range(len(loss)):
@@ -112,49 +76,57 @@ def plot_history(history=None, guid=None):
     for i in range(1, len(acc)+1):
         epochs.append(i)
 
+    # Make sure folder epochs_{epochs} exists
+    if not exists(f"../plots/epochs_{epochs}"):
+        os.mkdir(f"../plots/epochs_{epochs}")
+
     # Plot training and validation accuracy using Plotly
     fig = go.Figure(data=[
-        go.Scatter(x=epochs, y=smooth_curve(acc), mode="markers",
-                   name="Training Accuracy", marker=dict(size=10)),
-        go.Scatter(x=epochs, y=smooth_curve(val_acc), mode="lines", line=dict(width=2),
-                   name="Validation Accuracy")
+            go.Scatter(x=epochs,
+                        y=smooth_curve(acc),
+                        mode="markers",
+                        name="Training Accuracy",
+                        marker=dict(size=10)),
+            go.Scatter(x=epochs,
+                        y=smooth_curve(val_acc),
+                        mode="lines",
+                        line=dict(width=2),
+                        name="Validation Accuracy")
     ])
+    # Update layout of plot
     fig.update_layout(title="Training and Validation Accuracy",
-                      width=800,
-                      xaxis=dict(showgrid=False, title="Epochs"),
-                      yaxis=dict(showgrid=False, title="Accuracy"))
-    # Make sure figure is large
-    fig.update_layout()
-    # save as png
-    fig.write_image(f"../plots/{guid}_acc.png")
+                        width=800,
+                        xaxis=dict(showgrid=False,
+                                    title="Epochs"),
+                        yaxis=dict(showgrid=False,
+                                    title="Accuracy"))
+    # Save plot to file
+    fig.write_image(f"../plots/epochs_{epochs}/{guid}_acc.png")
+
+
+    
     # Plot training and validation loss using Plotly
     fig = go.Figure(data=[
-        go.Scatter(x=epochs, y=smooth_curve(loss), mode="markers",
-                   name="Training Loss", marker=dict(size=10)),
-        go.Scatter(x=epochs, y=smooth_curve(val_loss), mode="lines",
-                   name="Validation Loss", line=dict(width=2))
+            go.Scatter(x=epochs,
+                        y=smooth_curve(loss),
+                        mode="markers",
+                        name="Training Loss",
+                        marker=dict(size=10)),
+            go.Scatter(x=epochs,
+                        y=smooth_curve(val_loss),
+                        mode="lines",
+                        name="Validation Loss",
+                        line=dict(width=2))
     ])
     fig.update_layout(title="Training and Validation Loss",
-                      width=800,
-                      xaxis=dict(showgrid=False, title="Epochs"),
-                      yaxis=dict(showgrid=False, title="Loss"))
-    # save as png
-    fig.write_image(f"../plots/{guid}_loss.png")
-    print("Plots saved to ../plots/")
-    # # Save plot to file
-    # fig.write_html(f"{guid}_history.html")
-    # plt.plot(epochs, acc, "bo", label="Training acc")
-    # plt.plot(epochs, val_acc, "b", label="Validation acc")
-    # plt.title("Training and validation accuracy")
-    # plt.legend()
-    # plt.savefig(f"../data/images/{guid}_acc.png")
+                        width=800,
+                        xaxis=dict(showgrid=False,
+                                    title="Epochs"),
+                        yaxis=dict(showgrid=False,
+                                    title="Loss"))
+    fig.write_image(f"../plots/epochs_{epochs}/{guid}_loss.png")
 
-    # plt.figure()
-    # plt.plot(epochs, loss, "bo", label="Training loss")
-    # plt.plot(epochs, val_loss, "b", label="Validation loss")
-    # plt.title("Training and validation loss")
-    # plt.legend()
-    # plt.savefig(f"../data/images/{guid}_loss.png")
+    print("[INFO] Saved acc/loss plots to ../plots/epochs_{epochs}")
 
 
 def plot_mri_slices(image, label, patient_id=None):

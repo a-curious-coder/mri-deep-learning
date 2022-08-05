@@ -4,16 +4,12 @@ import hashlib
 import os
 import random
 import time
-from turtle import title
 
 import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-import tensorflow
-from cv2 import line
-from skimage.transform import resize
+import tensorflow as tf
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models, optimizers, utils
@@ -25,9 +21,9 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 # import to_categorical
 from tensorflow.keras.utils import to_categorical
 
-from misc import progress_bar
 from plot import *
 import sys
+
 MRI_IMAGE_DIR = "../data/mri_images"
 EDA = False
 
@@ -216,8 +212,8 @@ def get_mri_scan(patient_id, data_dir=None):
         for file in files:
             # If file is an MRI scan (With .nii extension)
             if file.endswith(".nii"):
-                mri_scan = nib.load(MRI_IMAGE_DIR + "/" +
-                                    patient_id + "/" + file)
+                mri_scan = nib.load(MRI_IMAGE_DIR + "/" + patient_id + "/" +
+                                    file)
 
     # If multiple mri scan files are found
     if len(files) > 1:
@@ -244,13 +240,17 @@ def get_mri_data(patient_id, data_dir=None):
         print(f"[!]\tMRI scan file corrupt for patient: {patient_id}")
         # If invalid_files.csv doesn't exist, create it
         if not os.path.isfile("../data/invalid_files.csv"):
-            with open("../data/invalid_files.csv", "w", encoding="utf-8") as file:
+            with open("../data/invalid_files.csv", "w",
+                      encoding="utf-8") as file:
                 file.write("patient_id\n")
             # Close file
             file.close()
         # If patient_id is not in invalid_files.csv, add it
-        if patient_id not in open("../data/invalid_files.csv", "r", encoding="utf-8").read():
-            with open("../data/invalid_files.csv", "a", encoding="utf-8") as file:
+        if patient_id not in open("../data/invalid_files.csv",
+                                  "r",
+                                  encoding="utf-8").read():
+            with open("../data/invalid_files.csv", "a",
+                      encoding="utf-8") as file:
                 file.write(patient_id + "\n")
             # Close file
             file.close()
@@ -290,8 +290,7 @@ def get_mri_scans_data(patient_ids: list):
         MRI Scans
     """
     return [
-        get_mri_data(patient_id, MRI_IMAGE_DIR)
-        for patient_id in patient_ids
+        get_mri_data(patient_id, MRI_IMAGE_DIR) for patient_id in patient_ids
     ]
 
 
@@ -301,7 +300,9 @@ def create_cnn():
     # Create CNN model
     model = models.Sequential()
     model.add(
-        layers.Conv2D(32, (3, 3), activation="relu", input_shape=(image_size[0], image_size[1], 3)))
+        layers.Conv2D(32, (3, 3),
+                      activation="relu",
+                      input_shape=(image_size[0], image_size[1], 3)))
     # NOTE: layers.MaxPooling2D is used to reduce the size of the image
     model.add(layers.MaxPooling2D(pool_size=(2, 2)))
     # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
@@ -393,7 +394,7 @@ def test_cnn(data, labels):
     print(type(results))
 
 
-def own_model(train_data, train_labels, epochs, batch_size, guid):
+def create_train_get_model(train_data, train_labels, epochs, batch_size, guid):
     """Trains a CNN on the data
 
     Args:
@@ -406,18 +407,15 @@ def own_model(train_data, train_labels, epochs, batch_size, guid):
     Returns:
         model: Trained model
     """
-
-    # If model already exists
+    size = image_size[0]
+    # If model already exsizets
     if not os.path.isfile(f"../models/cnn_{guid}.h5"):
         model = models.Sequential()
-        # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
         model.add(
             layers.Conv2D(100, (3, 3),
                           activation='relu',
-                          input_shape=(image_size[0], image_size[1], 3)))
-        # NOTE: layers.MaxPooling2D is used to extract features and reduce the size of the image
+                          input_shape=(size, size, 3)))
         model.add(layers.MaxPooling2D((2, 2)))
-        # NOTE: layers.Dropout is used to prevent overfitting by randomly dropping out a percentage of neurons
         model.add(layers.Dropout(0.5))
         model.add(layers.Conv2D(70, (3, 3), activation='relu'))
         model.add(layers.MaxPooling2D((2, 2)))
@@ -426,9 +424,11 @@ def own_model(train_data, train_labels, epochs, batch_size, guid):
         model.add(layers.Flatten())
         # Add dense layer for binary classification
         model.add(layers.Dense(1, activation="sigmoid"))
+
         model.compile(loss="binary_crossentropy",
                       optimizer=optimizers.Adam(learning_rate=0.001),
                       metrics=["acc"])
+
         print("[INFO] Training own CNN")
         history = {"acc": [], "val_acc": [], "loss": [], "val_loss": []}
         for epoch in range(epochs):
@@ -446,25 +446,37 @@ def own_model(train_data, train_labels, epochs, batch_size, guid):
             history["val_loss"].append(one_history.history["val_loss"][0])
             # the exact output you're looking for:
             print(
-                f"[INFO] Epoch {epoch+1}/{epochs}\t{time.time() - start:.2f} seconds", end="\r")
+                f"[INFO] Epoch {epoch+1}/{epochs}\t{time.time() - start:.2f} seconds",
+                end="\r")
         print(
-            f"[INFO] Epoch {epochs}/{epochs}\t{time.time() - start:.2f} seconds")
+            f"[INFO] Epoch {epochs}/{epochs}\t{time.time() - start:.2f} seconds"
+        )
         # save history to csv
-        with open(f"../data/history/cnn_{guid}.csv", "w") as f:
+        with open(f"../data/history/cnn_{guid}.csv", "w", encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(["acc", "val_acc", "loss", "val_loss"])
             for i in range(epochs):
-                writer.writerow([history["acc"][i], history["val_acc"][i],
-                                 history["loss"][i], history["val_loss"][i]])
+                writer.writerow([
+                    history["acc"][i], history["val_acc"][i],
+                    history["loss"][i], history["val_loss"][i]
+                ])
+        
         # Plot history stats to see if model is overfitting
         plot_history(history, guid)
-        print(f"[INFO] Saving model to ../models/cnn_{guid}.h5")
+        print(f"[INFO] Saving model to ../models/epoch_{epochs}/cnn_{guid}.h5")
         # Save model to models folder
         model.save(f"../models/cnn_{guid}.h5")
     else:
-        print(f"[!]\tModel already exists")
+        # print(f"[!]\tModel already exists")
         model = models.load_model(f"../models/cnn_{guid}.h5")
     return model
+
+
+def reset_random_seeds(seed):
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 
 def train_and_test(train_data, test_data, train_labels, test_labels):
@@ -481,40 +493,41 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
     """
     # Compute the mean and the variance of the training data for normalization.
 
-    acc = []
+    accs = []
     f1 = []
     precision = []
     recall = []
 
+    # Ensure the same random is generated each time
     random.seed(42)
     seeds = random.sample(range(1, 20), 5)
-    # Sort seeds
     seeds.sort()
-    print(f"{'Acc':<6} {'Loss':<6}")
+
+    print(f"{'Acc':<6} {'Loss':<6} {'seed':<6}")
     for seed in seeds:
-        # Reset seed
-        os.environ['PYTHONHASHSEED'] = str(seed)
-        tensorflow.random.set_seed(seed)
-        np.random.seed(seed)
-        random.seed(seed)
-        epochs = 1
+        reset_random_seeds(seed)
+
+        epochs = 10
         batch_size = 32
         guid = f"{seed}_{epochs}_{batch_size}_{image_size[0]}"
 
-        model = own_model(train_data, train_labels, epochs, batch_size, guid)
-
-        # Load model
-        model = models.load_model(f"../models/cnn_{guid}.h5")
+        # Create, train and get model
+        model = create_train_get_model(train_data, train_labels, epochs,
+                                       batch_size, guid)
         # Evaluate model
         score = model.evaluate(test_data, test_labels, verbose=0)
-        print(f'{score[1]:.4f} {score[0]:.4f} ')
-        acc.append(score[1])
 
+        loss = f"{score[0]*100:.2f}"
+        acc = f"{score[1]*100:.2f}"
+        print(f'{acc:<6} {loss:<6} {seed:<6}')
+
+        accs.append(score[1])
+
+        # Predict labels for test data
         test_predictions = model.predict(test_data)
-        test_label = utils.to_categorical(test_labels, 3)
+        test_label = utils.to_categorical(test_labels, 2)
 
         true_label = np.argmax(test_label, axis=1)
-
         predicted_label = np.argmax(test_predictions, axis=1)
 
         class_report = classification_report(true_label,
@@ -526,15 +539,16 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
         f1.append(class_report["macro avg"]["f1-score"])
 
     # Calculate statistics
-    avg_acc = f"{np.array(acc).mean() * 100:.2f}"
+    avg_acc = f"{np.array(accs).mean() * 100:.2f}"
     avg_precision = f"{np.array(precision).mean() * 100:.2f}"
     avg_recall = f"{np.array(recall).mean() * 100:.2f}"
     avg_f1 = f"{np.array(f1).mean() * 100:.2f}"
 
-    std_acc = f"{np.array(acc).std() * 100:.2f}"
+    std_acc = f"{np.array(accs).std() * 100:.2f}"
     std_precision = f"{np.array(precision).std() * 100:.2f}"
     std_recall = f"{np.array(recall).std() * 100:.2f}"
     std_f1 = f"{np.array(f1).std() * 100:.2f}"
+
     # Print statistics
     print(f"{'Type':<10} {'Metric':<10} {'Standard Deviation':<10}")
     print(f"{'Average':<10}{'Accuracy':<10} {avg_acc:<10}")
@@ -547,7 +561,8 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
     print(f"{'STD':<10} {'F1':<10} {std_f1:<10}")
 
 
-def train_and_test_pretrained(train_data, test_data, train_labels, test_labels):
+def train_and_test_pretrained(train_data, test_data, train_labels,
+                              test_labels):
     """
     Train and test the pretrained ResNET50
 
@@ -579,8 +594,12 @@ def train_and_test_pretrained(train_data, test_data, train_labels, test_labels):
     model.compile(loss='binary_crossentropy',
                   optimizer=optimizers.Adam(learning_rate=0.001),
                   metrics=['acc'])
-    history = model.fit(train_data, train_labels, epochs=15,
-                        batch_size=32, validation_split=0.1, verbose=1)
+    history = model.fit(train_data,
+                        train_labels,
+                        epochs=15,
+                        batch_size=32,
+                        validation_split=0.1,
+                        verbose=1)
     plot_history(history, "pretrained")
     score = model.evaluate(test_data, test_labels, verbose=0)
     print(f'{score[1]:.4f} {score[0]:.4f} ')
@@ -602,20 +621,17 @@ def train_and_test_lstm_model():
     # Create LSTM model and train
 
 
-def prepare_labels(labels, mode=0):
+def process_labels(labels):
     """ Prepares labels for
-        Multiclass or binary classification
+        Binary classification
     Args:
         labels (list): labels
-        mode (int): translate labels according to mode
 
     Returns:
         list: labels
     """
     # Replace labels in series with categorical labels
     labels = pd.Series(labels)
-    # print counts
-    print(labels.value_counts())
     # Replace AD and MCI with 1
     labels[labels == "AD"] = 1
     labels[labels == "MCI"] = 1
@@ -629,23 +645,30 @@ def prepare_labels(labels, mode=0):
 def image_data_classification():
     """Image data classification"""
     global image_size
+    global slice_mode
     global MRI_IMAGE_DIR
     image_size = (72, 72)
+    # "center", "average_center", "area"
+    slice_mode = "average_center"
     MRI_IMAGE_DIR = "../data/mri_images"
-    print("[INFO] Image data classification")
+    print(f"[INFO] Image data classification\n{image_size}\t{slice_mode}")
     # ! Prepare data
     start = time.time()
     from image_data.image_prepare import prepare_images
     print(
-        f"[INFO] Prepare images file imported in {time.time() - start:.2f} seconds")
-    prepare_images(image_size)
+        f"[INFO] Prepare images file imported in {time.time() - start:.2f} seconds"
+    )
+    prepare_images(image_size, slice_mode)
+    # if ../data/{slice_mode} doesn't exist, create it
+    if not os.path.exists(f"../data/{slice_mode}"):
+        os.makedirs(f"../data/{slice_mode}")
 
     # If clinical_data.csv does not exist
-    if not os.path.isfile(f'../data/clinical_data_{image_size[0]}.csv'):
+    if not os.path.isfile(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv'):
         # ! Load clinical data associated with mri scans
         # Load in mri data schema
-        clinical_data = pd.read_csv(
-            "../data/tabular_data.csv", low_memory=False)
+        clinical_data = pd.read_csv("../data/tabular_data.csv",
+                                    low_memory=False)
         # NOTE: Filters data for the first scan of each patient for AIBL project
         clinical_data = filter_data(clinical_data, scan_num=1, project="AIBL")
         # Save data to file
@@ -657,50 +680,53 @@ def image_data_classification():
             # Load invalid_files.csv
             invalid_files = pd.read_csv("../data/invalid_files.csv")
             # Remove rows in data where patient_id is in invalid_files
-            clinical_data = clinical_data[~clinical_data["NAME"].isin(
-                invalid_files["patient_id"])]
+            clinical_data = clinical_data[~clinical_data["NAME"].
+                                          isin(invalid_files["patient_id"])]
 
         # ! Extract labels from clinical data
         # Collect indices where DIAGNOSIS is TBD (aka "No diagnosis")
-        to_be_classified = clinical_data[clinical_data["DIAGNOSIS"]
-                                         == "TBD"].index
+        to_be_classified = clinical_data[clinical_data["DIAGNOSIS"] ==
+                                         "TBD"].index
         # Remove rows where DIAGNOSIS is TBD
         clinical_data = clinical_data.drop(to_be_classified)
         # Get labels
         labels = clinical_data['DIAGNOSIS']
         # Prepares labels for binary classification according to mode 1
-        labels = np.asarray(prepare_labels(
-            labels, mode=1).tolist())
+        labels = np.asarray(process_labels(labels).tolist())
 
         # ! Create a training and test set of images corresponding to clinical data
         # Load all mri slices (The order should correspond to the order of clinical data)
-        images = np.load(
-            f"../data/dataset/all_slices_{image_size[0]}.npy", allow_pickle=True)
+        images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy",
+                         allow_pickle=True)
 
         # Remove mri images that have invalid labels
         images = np.delete(images, to_be_classified, axis=0)
 
         # ! Generate list of hashes for each image as to link images to corresponding data
-        hashes = [hashlib.sha256(images[i].tobytes()).hexdigest()
-                  for i in range(len(images))]
+        hashes = [
+            hashlib.sha256(images[i].tobytes()).hexdigest()
+            for i in range(len(images))
+        ]
         # append hashes as new column to clinical_data
         clinical_data["IMAGE_HASH"] = hashes
-        clinical_data.to_csv(
-            f'../data/clinical_data_{image_size[0]}.csv', index=False)
+        clinical_data.to_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv',
+                             index=False)
 
     # ! Load clinical and image data
     # Load clinical data from file
-    clinical_data = pd.read_csv(
-        f'../data/clinical_data_{image_size[0]}.csv', low_memory=False)
+    clinical_data = pd.read_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv',
+                                low_memory=False)
     # get image labels as np array
     labels = np.asarray(clinical_data['DIAGNOSIS'].tolist())
     # Load all images
-    images = np.load(
-        f"../data/dataset/all_slices_{image_size[0]}.npy", allow_pickle=True)
+    images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy",
+                     allow_pickle=True)
 
     # Generate list of hashes for each image as to link images to corresponding data
-    hashes = [hashlib.sha256(images[i].tobytes()).hexdigest()
-              for i in range(len(images))]
+    hashes = [
+        hashlib.sha256(images[i].tobytes()).hexdigest()
+        for i in range(len(images))
+    ]
 
     invalid_hashes = []
     for i, hash in enumerate(hashes):
@@ -719,7 +745,8 @@ def image_data_classification():
     # If results.txt doesn't exist
     if not os.path.exists("../data/results/results.txt"):
         # Create results.txt
-        with open("../data/results/results.txt", "w", encoding="utf-8") as file:
+        with open("../data/results/results.txt", "w",
+                  encoding="utf-8") as file:
             file.write("model,acc,loss")
 
     # ! Train and test own CNN model
@@ -729,11 +756,14 @@ def image_data_classification():
     # ! Train and test model with self-attention layer
     # train_and_test_attention(train_data, test_data, train_labels, test_labels)
 
-    train_data_hashes = [hashlib.sha256(
-        train_data[i].tobytes()).hexdigest() for i in range(len(train_data))]
+    train_data_hashes = [
+        hashlib.sha256(train_data[i].tobytes()).hexdigest()
+        for i in range(len(train_data))
+    ]
     # Get patient_id as string for first element in train_data_hashes from clinical data
     patient_id = str(
-        clinical_data.loc[clinical_data["IMAGE_HASH"] == train_data_hashes[0], "NAME"].values[0])
+        clinical_data.loc[clinical_data["IMAGE_HASH"] == train_data_hashes[0],
+                          "NAME"].values[0])
     # ! Plot entire mri scan
     plot_mri_slices(train_data[0], train_labels[0], patient_id)
 

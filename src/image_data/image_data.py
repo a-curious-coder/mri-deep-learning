@@ -647,7 +647,7 @@ def image_data_classification():
     global image_size
     global slice_mode
     global MRI_IMAGE_DIR
-    image_size = (72, 72)
+    image_size = (150, 150)
     # "center", "average_center", "area"
     slice_mode = "average_center"
     MRI_IMAGE_DIR = "../data/mri_images"
@@ -750,7 +750,7 @@ def image_data_classification():
             file.write("model,acc,loss")
 
     # ! Train and test own CNN model
-    train_and_test(train_data, test_data, train_labels, test_labels)
+    # train_and_test(train_data, test_data, train_labels, test_labels)
     # ! Train and test pre-trained CNN model (ResNET50)
     # train_and_test_pretrained(train_data, test_data, train_labels, test_labels)
     # ! Train and test model with self-attention layer

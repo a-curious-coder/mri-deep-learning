@@ -100,6 +100,9 @@ def main():
         tmain()
     elif arg in ["", "3", "exit"]:
         print("[EXIT]")
+    elif arg in ["4", "testplot"]:
+        from image_data.image_prepare import main as m
+        m()
     # elif arg in["4", "test"]:
 
     else:

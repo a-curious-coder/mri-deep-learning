@@ -136,6 +136,7 @@ def plot_mri_slices(image, label, patient_id=None):
         image (np array): image
         label (str): label
     """
+    image = np.array(image)
     print(f"[INFO] Plotting slices of mri scan for patient \'{patient_id}\'")
     # Plot each channel separately
     fig, axs = plt.subplots(1, 3, figsize=(15, 15))
@@ -152,6 +153,7 @@ def plot_mri_slices(image, label, patient_id=None):
     fig.tight_layout()
     # Sup title
     fig.suptitle("Alzheimer's" if label == 1 else "Non-Alzheimer's")
+    fig.suptitle(label if label != 0 else "Non-Alzheimer's")
     plt.show()
 
 
@@ -190,9 +192,9 @@ def plot_mri_slice(patient_id, patient_diagnosis, image, directory="plots"):
     # autosize=False,
     # margin={'l': 0, 'r': 0, 't': 0, 'b': 0}
     # )
-
-    fig.write_image(
-        f'{directory}/{patient_diagnosis}/{patient_id}.png')
+    fig.show()
+    # fig.write_image(
+    #     f'{directory}/{patient_diagnosis}/{patient_id}.png')
     return True
 
 

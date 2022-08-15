@@ -45,13 +45,13 @@ def get_files(dir_path, filetype):
         list: List of nii files
     """
     # Get all nii files contained in subdirectories of dir_path
-    nii_files = []
+    mri_scans = []
     for root, _, files in os.walk(dir_path):
         for file in files:
             if file.endswith(filetype):
-                nii_files.append(os.path.join(root, file))
+                mri_scans.append(os.path.join(root, file))
     # Return nii files
-    return nii_files
+    return mri_scans
 
 
 def get_center_slices(mri_scan):
@@ -122,97 +122,105 @@ def prepare_images(image_size=(72, 72), slice_mode = "center"):
         return
     from image_data.image_data import filter_data, get_mri_data
 
-    # ! Re-organise AIBL data elsewhere
+    patient_ids = []
+    # ! Preprocess organisation of MRI data from AIBL dataset
     if os.path.exists("../AIBL"):
-        nii_files = get_files("../AIBL", ".nii")
-        # Separate nii files by slash depending on OS
-        nii_files = [nii_file.replace("\\", "/") for nii_file in nii_files]
-
         # If dataset folder doesn't exist
         if not os.path.exists("../data/mri_images"):
             # Create dataset folder
             os.mkdir("../data/mri_images")
 
-        # ! Check which patients we want from tabular data file
+        # ! Filter patients we want from tabular data file
         tabular_data = pd.read_csv("../data/tabular_data.csv")
 
         # Filter data to only include patients we want
         tabular_data = filter_data(tabular_data, scan_num=1, project="AIBL")
-        # Collect all patient ids from filtered data
         patient_ids = tabular_data['PATIENT_ID'].unique()
-        # Create dictionary of patient_ids to false
-        patient_dict = {patient_id: False for patient_id in patient_ids}
+        # Create dictionary of patient_ids with 0 scans
+        patient_dict = {patient_id: 0 for patient_id in patient_ids}
 
-        # ! Copy mri scan files to dataset folder
-        for count, nii_file in enumerate(nii_files):
-            patient_id = nii_file.split("/")[-2]
+        mri_scans = get_files("../AIBL", ".nii")
+        # Generalises the directory string format across all OSs
+        mri_scans = [mri_scan.replace("\\", "/") for mri_scan in mri_scans]
+
+        # ! Copy mri scan files from AIBL to mri_images folder
+        for count, mri_scan in enumerate(mri_scans):
+            # Extract patient_id from scan path
+            patient_id = mri_scan.split("/")[-2]
             output_folder = f"../data/mri_images/{patient_id}"
-            progress = count / len(nii_files) * 100
-            print(f"[INFO]  {progress:.2f}%", end="\r")
             # If output_folder doesn't exist
             if not os.path.exists(output_folder):
                 # If patient id is in our list of patients
                 if patient_id in patient_ids:
-                    patient_dict[patient_id] = True
-                    # If folder doesn't exist
+                    # Chaange patient_dict value to true because patient has an MRI scan
+                    patient_dict[patient_id] += 1
+
+                    # If the patient doesn't have their own folder in the new location
                     if not os.path.exists(f"../data/mri_images/{patient_id}"):
                         # Create folder
                         os.mkdir(f"../data/mri_images/{patient_id}")
-                    # Copy nii file to dataset folder
-                    shutil.copy(nii_file, output_folder)
 
-        # ! Check if all patients were found
-        for patient_id, found in patient_dict.items():
-            if not found:
-                # Check if patient id is in our mri_images
-                if os.path.exists(f"../data/mri_images/{patient_id}"):
-                    patient_dict[patient_id] = True
-        
+                    # Copy mri file to patient's folder in mri_images
+                    shutil.copy(mri_scan, output_folder)
+            
+            progress = count / len(mri_scans) * 100
+            print(f"[INFO]  {progress:.2f}%", end="\r")
+
+        # ! Check if all patients MRI scans were found
+        for patient_id, scans in patient_dict.items():
+            if scans > 1:
+                print(f"[INFO]  Patient {patient_id} has {scans} scans")
+            elif scans == 0:
+                print(f"[INFO]  Patient {patient_id} has no scans")
+
+    tabular_data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
+    # Filter data to only include patients we want
+    tabular_data = filter_data(tabular_data, scan_num=1, project="AIBL")
+    # Collect all patient ids from filtered data
+    patient_ids = tabular_data['PATIENT_ID'].unique()
+    
     # ! Extract slices from mri scans in dataset
-    overwrite = False
-    # Order patient_ids by length then alphabetically
-    patient_ids = sorted(patient_dict.keys(), key=len, reverse=True)
-    # for mri scan in dataset
+    overwrite = True
+    missed = 0
     for count, patient_id in enumerate(patient_ids):
-        progress = count / len(patient_ids) * 100
-        print(f"[INFO] \t{progress:.2f}%", end="\r")
-        # if center slice doesn't exist
+        # If the patient doesn't have their scan slices captured
         if not os.path.exists(
                 f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_slices_{image_size[0]}.npy"
         ) or overwrite:
-            # If MRI scan exists for patient
-            if patient_dict[patient_id]:
-                # Get mri scan data
-                mri_data = get_mri_data(patient_id, "../data/mri_images")
-                if mri_data is None:
-                    continue
 
-                # ! Get slices from image
-                if slice_mode == "center":
-                    slices = get_center_slices(mri_data)
-                elif slice_mode == "average_center":
-                    slices = get_average_center_slices(mri_data)
-                elif slice_mode == "area":
-                    slices = get_area_slices(mri_data)
-                
-                # For every slice in center slices
-                for index, slice in enumerate(slices):
-                    # Normalise slice in center slices
-                    slices[index] = normalise_data(slice)
-                
-                # Resize each slice
-                im1, im2, im3 = resize_slices(slices, image_size)
+            # Get mri scan data
+            mri_data = get_mri_data(patient_id, "../data/mri_images")
+            if mri_data is None:
+                missed += 1
+                continue
 
-                # Convert these image slices of scan to a concatenated np array
-                processed_slices = np.array([im1, im2, im3]).T
-                # processed_slices = np.array([im1, im2, im3])
+            # ! Get slices from image
+            if slice_mode == "center":
+                slices = get_center_slices(mri_data)
+            elif slice_mode == "average_center":
+                slices = get_average_center_slices(mri_data)
+            elif slice_mode == "area":
+                slices = get_area_slices(mri_data)
+            
+            # For every slice in center slices
+            for index, slice in enumerate(slices):
+                # Normalise slice in center slices
+                slices[index] = normalise_data(slice)
+            
+            # Resize each slice
+            im1, im2, im3 = resize_slices(slices, image_size)
 
-                # Save center slices to npy file
-                np.save(
-                    f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_slices_{image_size[0]}.npy",
-                    processed_slices)
-                print(f"[INFO]  Saved {patient_id}'s slices {count}/{len(patient_ids)}", end = "\r")
+            # Convert these image slices of scan to a concatenated np array
+            processed_slices = np.array([im1, im2, im3]).T
+            # processed_slices = np.array([im1, im2, im3])
 
+            # Save center slices to npy file
+            np.save(
+                f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_slices_{image_size[0]}.npy",
+                processed_slices)
+        
+        progress = count / len(patient_ids) * 100
+        print(f"[INFO] \t{progress:.2f}%\tMissed: {missed}", end="\r")
     # ! Merge all slices into one file
     # List all .npy files in dataset
     npy_files = get_files("../data/mri_images", ".npy")

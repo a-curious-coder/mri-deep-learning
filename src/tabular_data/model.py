@@ -26,7 +26,7 @@ class Model:
         """
 
         # Initialise environment variable settings
-        self.PREPROCESSING = preprocessing
+        self.preprocess = preprocessing
 
         # Training/Test sets
         self.x_train = x_train
@@ -113,7 +113,7 @@ class Model:
         with open('model_metrics.csv', 'a') as file_object:
             my_string = ','.join(map(str, all_metrics))
             file_object.write(f"{my_string},")
-            preprocessing = ','.join(map(str, self.PREPROCESSING))
+            preprocessing = ','.join(map(str, self.preprocess))
             file_object.write(preprocessing)
             file_object.write('\n')
 

@@ -224,7 +224,7 @@ def get_mri_scan(patient_id, data_dir=None):
     return mri_scan
 
 
-def get_mri_data(patient_id, data_dir=None):
+def get_mri_data(patient_id, data_dir=None, verbose=False):
     """ Loads in MRI scan data
 
     Args:
@@ -234,18 +234,22 @@ def get_mri_data(patient_id, data_dir=None):
     """
     mri_scan = None
     try:
-        # Load MRI scan's data
-        mri_scan = get_mri_scan(patient_id, data_dir).get_fdata()
+        # Load MRI scan
+        mri_scan = get_mri_scan(patient_id, data_dir)
+        # Get MRI scan data
+        mri_scan = mri_scan.get_fdata()
     except OSError:
-        print(f"[!]\tMRI scan file corrupt for patient: {patient_id}")
-        # If invalid_files.csv doesn't exist, create it
+        if verbose:
+            print(f"[!]\tNo MRI scan file found for patient: {patient_id}")
+        # ! If invalid_files.csv doesn't exist, create it
         if not os.path.isfile("../data/invalid_files.csv"):
             with open("../data/invalid_files.csv", "w",
                       encoding="utf-8") as file:
                 file.write("patient_id\n")
             # Close file
             file.close()
-        # If patient_id is not in invalid_files.csv, add it
+        
+        # ! If patient_id is not in invalid_files.csv, add it
         if patient_id not in open("../data/invalid_files.csv",
                                   "r",
                                   encoding="utf-8").read():
@@ -411,10 +415,7 @@ def create_train_get_model(train_data, train_labels, epochs, batch_size, guid):
     # If model already exsizets
     if not os.path.isfile(f"../models/cnn_{guid}.h5"):
         model = models.Sequential()
-        model.add(
-            layers.Conv2D(100, (3, 3),
-                          activation='relu',
-                          input_shape=(size, size, 3)))
+        model.add(layers.Conv2D(100, (3, 3), activation='relu', input_shape=(size, size, 3)))
         model.add(layers.MaxPooling2D((2, 2)))
         model.add(layers.Dropout(0.5))
         model.add(layers.Conv2D(70, (3, 3), activation='relu'))
@@ -422,12 +423,11 @@ def create_train_get_model(train_data, train_labels, epochs, batch_size, guid):
         model.add(layers.Dropout(0.3))
         model.add(layers.Conv2D(50, (3, 3), activation='relu'))
         model.add(layers.Flatten())
-        # Add dense layer for binary classification
         model.add(layers.Dense(1, activation="sigmoid"))
 
         model.compile(loss="binary_crossentropy",
-                      optimizer=optimizers.Adam(learning_rate=0.001),
-                      metrics=["acc"])
+                        optimizer=optimizers.Adam(learning_rate=0.001),
+                        metrics=["acc"])
 
         print("[INFO] Training own CNN")
         history = {"acc": [], "val_acc": [], "loss": [], "val_loss": []}
@@ -680,13 +680,11 @@ def image_data_classification():
             # Load invalid_files.csv
             invalid_files = pd.read_csv("../data/invalid_files.csv")
             # Remove rows in data where patient_id is in invalid_files
-            clinical_data = clinical_data[~clinical_data["NAME"].
-                                          isin(invalid_files["patient_id"])]
+            clinical_data = clinical_data[~clinical_data["NAME"].isin(invalid_files["patient_id"])]
 
         # ! Extract labels from clinical data
         # Collect indices where DIAGNOSIS is TBD (aka "No diagnosis")
-        to_be_classified = clinical_data[clinical_data["DIAGNOSIS"] ==
-                                         "TBD"].index
+        to_be_classified = clinical_data[clinical_data["DIAGNOSIS"] == "TBD"].index
         # Remove rows where DIAGNOSIS is TBD
         clinical_data = clinical_data.drop(to_be_classified)
         # Get labels
@@ -695,9 +693,7 @@ def image_data_classification():
         labels = np.asarray(process_labels(labels).tolist())
 
         # ! Create a training and test set of images corresponding to clinical data
-        # Load all mri slices (The order should correspond to the order of clinical data)
-        images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy",
-                         allow_pickle=True)
+        images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy", allow_pickle=True)
 
         # Remove mri images that have invalid labels
         images = np.delete(images, to_be_classified, axis=0)

@@ -7,68 +7,30 @@ NOTE:   This and all dependent files have been coded under
         the assumption main.py is executed from the src folder
 """
 
-import datetime
 import os
 import sys
 import time
 
-import numpy as np
-
-from misc import cls, prepare_dir_structure
-
-
-def print_title():
-    """ Prints program title """
-    # Read title.txt
-    # If terminal size is small, print title
-    if os.get_terminal_size().columns < 80:
-        with open("../small_title.txt", encoding="utf-8") as file_object:
-            print(file_object.read())
-    else:
-        with open("../title.txt", "r", encoding="utf-8") as file:
-            title = file.read()
-        # Print title
-        print(title)
-
-
-def print_time_left():
-    """Print time left until September 1st, 2022"""
-    now = datetime.datetime.now()
-    year = now.year
-    month = now.month
-    day = now.day
-    hour = now.hour
-    minute = now.minute
-    second = now.second
-    # Calculate time left
-    time_left = datetime.datetime(year=2022, month=9, day=1, hour=0, minute=0, second=0) - \
-        datetime.datetime(year=year, month=month, day=day,
-                          hour=hour, minute=minute, second=second)
-    # Convert time left into months, then weeks, then days, then hours, then minutes, then seconds
-    months = time_left.days // 30
-    weeks = (time_left.days % 30) // 7
-    days = (time_left.days % 30) % 7
-    # Print time left
-    print(f"[TIME LEFT]\t{months} months, {weeks} weeks, {days} days")
-    # Get today in string format
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
-    time_left = np.busday_count(today, '2022-09-01') * 3
-    # Print working days
-    print(
-        f"[WORK HOURS]\tAssuming you're working at least 3 hours a day, you have at least {time_left} working hours left"
-    )
-
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+# Settings
+image_size = (72, 72)
+slice_mode = "average_center" # center, average_center, area
+mri_scans = "../data/mri_images"
 
 def main():
     """Main"""
-    cls()
-    # Prettiness for terminal
-    print_title()
-    print_time_left()
 
+    # if misc exists, import it
+    try:
+        from misc import cls, prepare_dir_structure, print_title, print_time_left
+        cls()
+        # Prettiness for terminal
+        print_title()
+        print_time_left()
+    except ImportError:
+        print("[ERROR]\tCould not import misc.py")
+    
     # Menu
     if sys.argv[1:]:
         # Read in arg
@@ -90,11 +52,12 @@ def main():
 
     if arg in ["image", "1"]:
         start = time.time()
+        # ! Prepare data
+        from image_data.image_prepare import prepare_images
+        prepare_images(image_size, slice_mode)
         from image_data.image_data import image_data_classification
-        print(
-            f"[INFO] Image data file imported in {time.time() - start:.2f} seconds"
-        )
-        image_data_classification()
+        print(f"[INFO] Image data file imported in {time.time() - start:.2f} seconds")
+        image_data_classification(image_size, slice_mode)
     elif arg in ["tabular", "2"]:
         from tabular_data.tabular_data import main as tmain
         tmain()
@@ -102,8 +65,27 @@ def main():
         print("[EXIT]")
     elif arg in ["4", "testplot"]:
         from image_data.image_prepare import main as m
-        m()
-    # elif arg in["4", "test"]:
+        patient_id = input("[*]\tEnter patient ID: ")
+        # Does patient ID directory exists
+        if os.path.exists(f"../data/mri_images/{patient_id}"):
+            m(patient_id)
+        else:
+            print(f"[INFO] Patient ID {patient_id} directory does not exist. Running default.")
+            m()
+    elif arg in ["5"]:
+        # Test all combinations of parameters
+        from image_data.image_prepare import prepare_images
+        from image_data.image_data import image_data_classification
+
+        image_sizes = [(72, 72), (144, 144), (150, 150)]
+        slice_modes = ["center", "average_center", "area"]
+
+        for img_size in image_sizes:
+            for slc_mode in slice_modes:
+                print(f"[INFO] Images with size {img_size} and slice mode {slc_mode}")
+                prepare_images(img_size, slc_mode)
+                image_data_classification(img_size, slc_mode)
+
 
     else:
         print(f"[ERROR] Invalid argument '{arg}'")

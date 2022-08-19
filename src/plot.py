@@ -11,6 +11,41 @@ import matplotlib.pyplot as plt
 import csv
 
 
+def create_plot_folder(patient_id = None):
+    """ Create folder for plots
+    
+    Args:
+        patient_id (int): patient id
+    """
+    if patient_id is not None:
+        if not exists(f"../plots/{patient_id}"):
+            os.mkdir(f"../plots/{patient_id}")
+
+
+def save_figure(fig, file_name, patient_id = None, file_type = "png"):
+    """ Save figure to file
+    
+    Args:
+        fig (matplotlib.figure): figure
+    """
+    # Save figure
+    if patient_id is not None:
+        create_plot_folder(patient_id)
+        if file_type == "png":
+            fig.savefig(f"../plots/{patient_id}/{file_name}.png")
+        elif file_type == "pdf":
+            fig.savefig(f"../plots/{patient_id}/{file_name}.pdf")
+        elif file_type == "html":
+            fig.write_html(f"../plots/{patient_id}/{file_name}.html")
+    else:
+        if file_type == "png":
+            fig.savefig(f"../plots/{file_name}.png")
+        elif file_type == "pdf":
+            fig.savefig(f"../plots/{file_name}.pdf")
+        elif file_type == "html":
+            fig.write_html(f"../plots/{file_name}.html")
+
+
 def smooth_curve(points, factor=0.8):
     """
     Smooths a curve by taking the average of the points.
@@ -77,8 +112,8 @@ def plot_history(history=None, guid=None):
         epochs.append(i)
 
     # Make sure folder epochs_{epochs} exists
-    if not exists(f"../plots/epochs_{epochs}"):
-        os.mkdir(f"../plots/epochs_{epochs}")
+    if not exists(f"../plots/epochs_{len(epochs)}"):
+        os.mkdir(f"../plots/epochs_{len(epochs)}")
 
     # Plot training and validation accuracy using Plotly
     fig = go.Figure(data=[
@@ -101,7 +136,7 @@ def plot_history(history=None, guid=None):
                         yaxis=dict(showgrid=False,
                                     title="Accuracy"))
     # Save plot to file
-    fig.write_image(f"../plots/epochs_{epochs}/{guid}_acc.png")
+    fig.write_image(f"../plots/epochs_{max(epochs)}/{guid}_acc.png")
 
 
     
@@ -124,37 +159,46 @@ def plot_history(history=None, guid=None):
                                     title="Epochs"),
                         yaxis=dict(showgrid=False,
                                     title="Loss"))
-    fig.write_image(f"../plots/epochs_{epochs}/{guid}_loss.png")
+    fig.write_image(f"../plots/epochs_{max(epochs)}/{guid}_loss.png")
 
-    print("[INFO] Saved acc/loss plots to ../plots/epochs_{epochs}")
+    print(f"[INFO] Saved acc/loss plots to ../plots/epochs_{max(epochs)}")
 
 
-def plot_mri_slices(image, label, patient_id=None):
-    """ Plots an image and its label
+def plot_mri_slices(image, label, patient_id=None, slice_mode = "center", show = False):
+    """ Plots each slice of the MRI image
+    Slices are plotted in this order: Saggital, Coronal and Axial
 
     Args:
         image (np array): image
         label (str): label
     """
     image = np.array(image)
-    print(f"[INFO] Plotting slices of mri scan for patient \'{patient_id}\'")
+    print(f"[INFO] Patient {patient_id:<5} {slice_mode:<5} slices")
     # Plot each channel separately
     fig, axs = plt.subplots(1, 3, figsize=(15, 15))
     axs[0].imshow(image[:, :, 0], cmap="gray")
-    axs[0].set_title("Axial")
+    axs[0].set_title("Saggital")
     axs[1].imshow(image[:, :, 1], cmap="gray")
     axs[1].set_title("Coronal")
     axs[2].imshow(image[:, :, 2], cmap="gray")
-    axs[2].set_title("Saggital")
-    # remove axis
-    for ax in axs:
-        ax.axis("off")
+    axs[2].set_title("Axial")
+
+    # remove axis for all frames
+    for frame in axs:
+        frame.axis("off")
+
     # Tight layout
     fig.tight_layout()
-    # Sup title
-    fig.suptitle("Alzheimer's" if label == 1 else "Non-Alzheimer's")
-    fig.suptitle(label if label != 0 else "Non-Alzheimer's")
-    plt.show()
+
+    diagnosis = "Alzheimer's" if label == 1 else "Non-Alzheimer's"
+    diagnosis = label if label != 0 else "Non-Alzheimer's"
+    suptitle = f"{patient_id:<5} {diagnosis} {slice_mode:<5}" 
+    fig.suptitle(suptitle, fontsize=20)
+
+    save_figure(fig, f"{label}_{slice_mode}_slices", patient_id, "png")
+
+    if show:
+        plt.show()
 
 
 def plot_all_frames(test_image_t1):

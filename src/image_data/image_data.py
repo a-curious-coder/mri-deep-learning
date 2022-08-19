@@ -13,20 +13,23 @@ import tensorflow as tf
 from sklearn.metrics import classification_report
 from sklearn.model_selection import train_test_split
 from tensorflow.keras import layers, models, optimizers, utils
-# Import resnet50
-from tensorflow.keras.applications.resnet50 import ResNet50
-# Import VGG16
-from tensorflow.keras.applications.vgg16 import VGG16
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-# import to_categorical
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.utils import to_categorical
+from tensorflow.keras.constraints import unit_norm
+from tensorflow.keras.regularizers import l2 as l2_regularizer
+from tensorflow.keras import datasets
+
+# (train_images, train_labels), (test_images, test_labels) = datasets.cifar10.load_data()
+
+from tensorflow.keras import callbacks
 
 from plot import *
 import sys
 
 MRI_IMAGE_DIR = "../data/mri_images"
 EDA = False
-
 
 def filter_data(data, scan_num=None, project=None):
     """Filters full data-set to records we want
@@ -66,6 +69,7 @@ def filter_data(data, scan_num=None, project=None):
     del data['Path']
     # Replace path values with patient ids
     data['PATIENT_ID'] = patients
+    
     # Move patient_id to the front of the dataframe
     data = data[['PATIENT_ID'] + data.columns.tolist()[1:-1]]
     # Sort data by patient id
@@ -74,7 +78,7 @@ def filter_data(data, scan_num=None, project=None):
     return data
 
 
-def tabularise_image_data(data=None):
+def link_tabular_to_image_data(data=None):
     """ Assigns the corresponding labels from the tabular data to the MRI scan file names
     Args:
         data (pd.DataFrame): tabular mri data
@@ -160,27 +164,18 @@ def image_data_eda(data):
         data.describe().to_csv("../data/dataset-description.csv", index=True)
 
 
-def show_slices(slices, name):
-    """ Function to display row of image slices
-
+def reset_random_seeds(seed):
+    """ Resets the random seed for tensorflow and numpy
     Args:
-        slices (np.array): image slices
-        name (str): name of the image
+        seed (int): seed for random number generator
+    
+    Returns:
+        None
     """
-    filename = name.replace(".nii", "") + ".png"
-    # if file exists
-    if os.path.isfile(f"../data/images/{filename}"):
-        return
-
-    fig, axes = plt.subplots(1, len(slices))
-    for i, slice in enumerate(slices):
-        axes[i].imshow(slice.T, cmap="gray", origin="lower")
-        # remove axis
-        plt.axis('off')
-        # Remove padding
-        plt.tight_layout()
-    # Save figure
-    plt.savefig("../data/images/" + filename)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    tf.random.set_seed(seed)
+    np.random.seed(seed)
+    random.seed(seed)
 
 
 def get_mri_scan(patient_id, data_dir=None):
@@ -194,7 +189,6 @@ def get_mri_scan(patient_id, data_dir=None):
     """
 
     mri_scan = None
-    global MRI_IMAGE_DIR
     if data_dir is not None:
         MRI_IMAGE_DIR = data_dir
     # print(f"[INFO] Loading MRI scan for patient {patient_id} ")
@@ -238,7 +232,10 @@ def get_mri_data(patient_id, data_dir=None, verbose=False):
         mri_scan = get_mri_scan(patient_id, data_dir)
         # Get MRI scan data
         mri_scan = mri_scan.get_fdata()
-    except OSError:
+    except Exception as err:
+        if verbose:
+            print(f"{patient_id:<10} {err}")
+        mri_scan = None
         if verbose:
             print(f"[!]\tNo MRI scan file found for patient: {patient_id}")
         # ! If invalid_files.csv doesn't exist, create it
@@ -259,7 +256,7 @@ def get_mri_data(patient_id, data_dir=None, verbose=False):
             # Close file
             file.close()
         return mri_scan
-
+    
     # If mri scan is 4D, remove 4th dimension as it's useless
     if len(mri_scan.shape) == 4:
         mri_scan = mri_scan[:, :, :, 0]
@@ -298,188 +295,106 @@ def get_mri_scans_data(patient_ids: list):
     ]
 
 
-def create_cnn():
-    """Create CNN model"""
-    print("[INFO] Creating CNN model")
-    # Create CNN model
-    model = models.Sequential()
-    model.add(
-        layers.Conv2D(32, (3, 3),
-                      activation="relu",
-                      input_shape=(image_size[0], image_size[1], 3)))
-    # NOTE: layers.MaxPooling2D is used to reduce the size of the image
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    # NOTE: layers.Conv2D is used to add more layers/filters for each 3x3 segment of the image to the CNN
-    model.add(layers.Conv2D(32, (3, 3), activation="relu"))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(layers.Conv2D(64, (3, 3), activation="relu"))
-    model.add(layers.MaxPooling2D(pool_size=(2, 2)))
-    # NOTE: layers.Flatten is used to convert the image to a 1D array
-    model.add(layers.Flatten())
-    # NOTE: layers.Dense is used to add more layers to the CNN
-    model.add(layers.Dense(64, activation="relu"))
-    model.add(layers.Dense(1, activation="sigmoid"))
-    model.compile(loss="binary_crossentropy",
-                  optimizer="optimizers.Adam",
-                  metrics=["accuracy"])
-    return model
+def create_model():
+    """Creates a CNN model
+    Returns:
+        model (keras.models.Sequential): CNN model
+    """
+    print('[INFO] Creating model')
+    size = image_size[0]
 
-
-def create_cnn2():
-    """ Own CNN model """
     model = models.Sequential()
-    model.add(
-        layers.Conv2D(100, (3, 3), activation='relu', input_shape=(72, 72, 3)))
+    model.add(layers.Conv2D(100, (3, 3),
+                activation='relu',
+                kernel_initializer='he_normal',
+                kernel_regularizer=l2_regularizer(l=0.01),
+                kernel_constraint=unit_norm(),
+                input_shape=(size, size, 3))
+            )
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Dropout(0.5))
-    model.add(layers.Conv2D(70, (3, 3), activation='relu'))
+
+    model.add(layers.Conv2D(70, (3, 3), activation='relu', kernel_regularizer=l2_regularizer(l=0.01)))
     model.add(layers.MaxPooling2D((2, 2)))
     model.add(layers.Dropout(0.3))
+
     model.add(layers.Conv2D(50, (3, 3), activation='relu'))
     model.add(layers.Flatten())
-    model.add(layers.Dense(3, activation="softmax"))
+    model.add(layers.Dense(64, activation='relu'))
+    model.add(layers.Dense(1, activation="sigmoid"))
 
-    model.compile(optimizers.Adam(learning_rate=0.001),
-                  "sparse_categorical_crossentropy",
-                  metrics=["sparse_categorical_accuracy"])
+    model.compile(loss="binary_crossentropy",
+                    optimizer=optimizers.Adam(learning_rate=0.001),
+                    metrics=["acc"])
+    # model.compile(loss="binary_crossentropy",
+    #                 optimizer=optimizers.RMSprop(learning_rate=1e-4),
+    #                 metrics=["acc"])
 
-    model.summary()
     return model
 
 
-def train_cnn(data, labels):
-    """Trains a CNN on the data
-
-    Parameters
-    ----------
-    data : list
-        Data to train on
-    """
-    if len(data) == 0:
-        print("[!]\tNo data to train on")
-        return
-    epochs = 20
-    # If trained model already exists
-    if os.path.isfile(f"../data/models/cnn_{epochs}.h5"):
-        print("[!]\tTrained model already exists")
-        return
-    print(f"[INFO] {len(data)} brain scans to train on")
-    # Create CNN
-    cnn = create_cnn2()
-    print("[INFO] Training CNN")
-    # Train CNN
-    history = cnn.fit(data, labels, epochs=epochs)
-
-    # Plot history
-    # plot_history(history, epochs)
-    # Save CNN
-    cnn.save(f"../data/models/cnn_{epochs}.h5")
-
-
-def test_cnn(data, labels):
-    """Tests a CNN on the data
-
-    Parameters
-    ----------
-    data : list
-        Data to test on
-    """
-    if len(data) == 0:
-        print("[!]\tNo data to test on")
-        return
-
-    print(f"[INFO] {len(data)} brain scans to test on")
-    # Create CNN
-    cnn = create_cnn2()
-    # Load CNN
-    cnn.load_weights("../data/models/cnn_20.h5")
-    # Test CNN
-    results = cnn.evaluate(data, labels)
-    print(type(results))
-
-
-def create_train_get_model(train_data, train_labels, epochs, batch_size, guid):
-    """Trains a CNN on the data
-
+def train_model(model, train_data, train_labels, val_data, val_labels, epochs, batch_size, guid):
+    """ Trains a CNN model
+    
     Args:
-        train_data (list): Data to train on
-        train_labels (list): Labels to train on
+        model (keras.models.Sequential): CNN model
+        train_data (list): Training data
+        train_labels (list): Training labels
+        val_data (list): Validation images
+        val_labels (list): Validation labels
         epochs (int): Number of epochs to train for
         batch_size (int): Batch size
-        guid (str): Guid of the patient
-
+        guid (str): Unique identifier for the model
+    
     Returns:
-        model: Trained model
+        history (keras.callbacks.History): Training history
     """
-    size = image_size[0]
-    # If model already exsizets
-    if not os.path.isfile(f"../models/cnn_{guid}.h5"):
-        model = models.Sequential()
-        model.add(layers.Conv2D(100, (3, 3), activation='relu', input_shape=(size, size, 3)))
-        model.add(layers.MaxPooling2D((2, 2)))
-        model.add(layers.Dropout(0.5))
-        model.add(layers.Conv2D(70, (3, 3), activation='relu'))
-        model.add(layers.MaxPooling2D((2, 2)))
-        model.add(layers.Dropout(0.3))
-        model.add(layers.Conv2D(50, (3, 3), activation='relu'))
-        model.add(layers.Flatten())
-        model.add(layers.Dense(1, activation="sigmoid"))
 
-        model.compile(loss="binary_crossentropy",
-                        optimizer=optimizers.Adam(learning_rate=0.001),
-                        metrics=["acc"])
+    earlystopping = callbacks.EarlyStopping(monitor ="val_loss",
+                                        mode ="min", patience = 5,
+                                        restore_best_weights = True)
 
-        print("[INFO] Training own CNN")
-        history = {"acc": [], "val_acc": [], "loss": [], "val_loss": []}
-        for epoch in range(epochs):
-            start = time.time()
-            one_history = model.fit(train_data,
-                                    train_labels,
-                                    epochs=1,
-                                    batch_size=batch_size,
-                                    validation_split=0.1,
-                                    verbose=0)
+    print(f"[INFO] Training CNN model using {slice_mode} slices")
 
-            history["acc"].append(one_history.history["acc"][0])
-            history["val_acc"].append(one_history.history["val_acc"][0])
-            history["loss"].append(one_history.history["loss"][0])
-            history["val_loss"].append(one_history.history["val_loss"][0])
-            # the exact output you're looking for:
-            print(
-                f"[INFO] Epoch {epoch+1}/{epochs}\t{time.time() - start:.2f} seconds",
-                end="\r")
+    history = {"acc": [], "val_acc": [], "loss": [], "val_loss": []}
+
+    for epoch in range(epochs):
+        start = time.time()
+        one_history = model.fit(train_data,
+                                train_labels,
+                                epochs=1,
+                                batch_size=batch_size,
+                                validation_data =(val_images, val_labels),
+                                callbacks=[earlystopping],
+                                verbose=0)
+
+        history["acc"].append(one_history.history["acc"][0])
+        history["val_acc"].append(one_history.history["val_acc"][0])
+        history["loss"].append(one_history.history["loss"][0])
+        history["val_loss"].append(one_history.history["val_loss"][0])
+
+        # the exact output you're looking for:
         print(
-            f"[INFO] Epoch {epochs}/{epochs}\t{time.time() - start:.2f} seconds"
-        )
-        # save history to csv
-        with open(f"../data/history/cnn_{guid}.csv", "w", encoding='utf-8', newline='') as f:
-            writer = csv.writer(f)
-            writer.writerow(["acc", "val_acc", "loss", "val_loss"])
-            for i in range(epochs):
-                writer.writerow([
-                    history["acc"][i], history["val_acc"][i],
-                    history["loss"][i], history["val_loss"][i]
-                ])
-        
-        # Plot history stats to see if model is overfitting
-        plot_history(history, guid)
-        print(f"[INFO] Saving model to ../models/epoch_{epochs}/cnn_{guid}.h5")
-        # Save model to models folder
-        model.save(f"../models/cnn_{guid}.h5")
-    else:
-        # print(f"[!]\tModel already exists")
-        model = models.load_model(f"../models/cnn_{guid}.h5")
+            f"[INFO] Epoch {epoch+1}/{epochs}\t{time.time() - start:.2f} seconds",
+            end="\r")
+    print(
+        f"[INFO] Epoch {epochs}/{epochs}\t{time.time() - start:.2f} seconds"
+    )
+
+    # Save training history to csv
+    with open(f"../data/history/cnn_{guid}.csv", "w", encoding='utf-8', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["acc", "val_acc", "loss", "val_loss"])
+        for i in range(epochs):
+            writer.writerow([
+                history["acc"][i], history["val_acc"][i],
+                history["loss"][i], history["val_loss"][i]
+            ])
+    plot_history(history, guid)
     return model
 
 
-def reset_random_seeds(seed):
-    os.environ['PYTHONHASHSEED'] = str(seed)
-    tf.random.set_seed(seed)
-    np.random.seed(seed)
-    random.seed(seed)
-
-
-def train_and_test(train_data, test_data, train_labels, test_labels):
+def train_and_test(train_data, val_data, test_data, train_labels, val_labels, test_labels):
     """ Trains and tests a CNN on the data
 
     Args:
@@ -491,8 +406,13 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
     Returns:
         None
     """
-    # Compute the mean and the variance of the training data for normalization.
 
+    val_size = 0.2
+    test_size = round(len(test_data)/(len(train_data) + len(test_data)), 1)
+    height = image_size[0]
+    width = image_size[1]
+
+    # Compute the mean and the variance of the training data for normalization.
     accs = []
     f1 = []
     precision = []
@@ -502,53 +422,127 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
     random.seed(42)
     seeds = random.sample(range(1, 20), 5)
     seeds.sort()
-
+    retrain = False
     print(f"{'Acc':<6} {'Loss':<6} {'seed':<6}")
+    avg_guid = []
     for seed in seeds:
         reset_random_seeds(seed)
 
-        epochs = 10
+        epochs = 20
         batch_size = 32
-        guid = f"{seed}_{epochs}_{batch_size}_{image_size[0]}"
+        # GUID, seed, epochs, batch_size, slice_mode, image_size, acc, loss
+        guid = f"{seed}_{epochs}_{batch_size}_{slice_mode}_{image_size[0]}"
+        # Create hash of guid 8 characters long
+        guid = hashlib.md5(guid.encode()).hexdigest()[:8]
+        # For avg results
+        avg_guid.append(guid)
+        # Load training_log.csv into pandas dataframe
+        train_log = pd.read_csv("../models/training_log.csv")
+        
+        # Declare blank model
+        model = None
 
-        # Create, train and get model
-        model = create_train_get_model(train_data, train_labels, epochs,
-                                       batch_size, guid)
-        # Evaluate model
+        # Check if model exists in models folder
+        # TODO: fix name
+        if os.path.isfile(f"../models/{guid}.h5") and not retrain:
+            model = models.load_model(f"../models/{guid}.h5")
+
+        if model is None:
+            # ! Create train/validation test split
+            # ! 1 Create model
+            model = create_model()
+            # ! 2 Train model
+            model = train_model(model, train_data, train_labels, val_data, val_labels, epochs, batch_size, guid)
+            # Save trained model
+            model.save(f"../models/cnn_{guid}.h5")
+
+        # ! 3 Evaluate model 
         score = model.evaluate(test_data, test_labels, verbose=0)
 
         loss = f"{score[0]*100:.2f}"
         acc = f"{score[1]*100:.2f}"
         print(f'{acc:<6} {loss:<6} {seed:<6}')
 
-        accs.append(score[1])
-
         # Predict labels for test data
         test_predictions = model.predict(test_data)
         test_label = utils.to_categorical(test_labels, 2)
 
         true_label = np.argmax(test_label, axis=1)
-        predicted_label = np.argmax(test_predictions, axis=1)
-
+        # predicted_label = np.argmax(test_predictions, axis=1)
+        # Round test predictions to nearest integer
+        predicted_label = np.round(test_predictions)
+        
         class_report = classification_report(true_label,
                                              predicted_label,
                                              output_dict=True,
                                              zero_division=0)
-        precision.append(class_report["macro avg"]["precision"])
-        recall.append(class_report["macro avg"]["recall"])
-        f1.append(class_report["macro avg"]["f1-score"])
 
+        # if guid is not in guid column, write to training_log.csv
+        if guid not in train_log["guid"].values:
+            # Append guid to csv file with stats
+            with open("../models/training_log.csv", "a", encoding='utf-8', newline='') as f:
+                writer = csv.writer(f)
+                # If guid exists in csv, skip writing to csv
+                writer.writerow([guid,
+                                    seed,
+                                    epochs,
+                                    batch_size,
+                                    slice_mode,
+                                    height,
+                                    width,
+                                    acc,
+                                    class_report["macro avg"]["precision"],
+                                    class_report["macro avg"]["recall"],
+                                    class_report["macro avg"]["f1-score"],
+                                    loss,
+                                    test_size,
+                                    val_size,
+                                    False
+                                ])
+
+    # Get accs from training_log.csv
+    df = pd.read_csv("../models/training_log.csv")
+    # Filter by guid
+    df = df[df["guid"].isin(avg_guid)]
+    # Get average acc
+    accs = df["acc"].tolist()
+    precision = df["precision"].tolist()
+    recall = df["recall"].tolist()
+    f1 = df["f1"].tolist()
+    
     # Calculate statistics
-    avg_acc = f"{np.array(accs).mean() * 100:.2f}"
-    avg_precision = f"{np.array(precision).mean() * 100:.2f}"
-    avg_recall = f"{np.array(recall).mean() * 100:.2f}"
-    avg_f1 = f"{np.array(f1).mean() * 100:.2f}"
+    avg_acc = f"{np.array(accs).mean():.2f}"
+    avg_precision = f"{np.array(precision).mean():.2f}"
+    avg_recall = f"{np.array(recall).mean():.2f}"
+    avg_f1 = f"{np.array(f1).mean():.2f}"
 
-    std_acc = f"{np.array(accs).std() * 100:.2f}"
-    std_precision = f"{np.array(precision).std() * 100:.2f}"
-    std_recall = f"{np.array(recall).std() * 100:.2f}"
-    std_f1 = f"{np.array(f1).std() * 100:.2f}"
+    std_acc = f"{np.array(accs).std():.2f}"
+    std_precision = f"{np.array(precision).std():.2f}"
+    std_recall = f"{np.array(recall).std():.2f}"
+    std_f1 = f"{np.array(f1).std():.2f}"
+    
+    # Create hash of avg guid 8 characters long
+    avg_guid = hashlib.md5(avg_guid[0].encode()).hexdigest()[:8]
 
+    with open("../models/training_log.csv", "a", encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow([avg_guid,
+                            seed,
+                            epochs,
+                            batch_size,
+                            slice_mode,
+                            height,
+                            width,
+                            avg_acc,
+                            avg_precision,
+                            avg_recall,
+                            avg_f1,
+                            "NULL",
+                            test_size,
+                            val_size,
+                            True
+                        ])
+    
     # Print statistics
     print(f"{'Type':<10} {'Metric':<10} {'Standard Deviation':<10}")
     print(f"{'Average':<10}{'Accuracy':<10} {avg_acc:<10}")
@@ -562,7 +556,7 @@ def train_and_test(train_data, test_data, train_labels, test_labels):
 
 
 def train_and_test_pretrained(train_data, test_data, train_labels,
-                              test_labels):
+                              test_labels, slice_mode="center"):
     """
     Train and test the pretrained ResNET50
 
@@ -587,6 +581,7 @@ def train_and_test_pretrained(train_data, test_data, train_labels,
             continue
         layer.trainable = False
 
+    # Incorporate pretrained model
     model = models.Sequential()
     model.add(conv_base)
     model.add(layers.Flatten())
@@ -605,8 +600,8 @@ def train_and_test_pretrained(train_data, test_data, train_labels,
     print(f'{score[1]:.4f} {score[0]:.4f} ')
 
     # Append results to results file
-    with open("../data/results/results.txt", "a", encoding="utf-8") as file:
-        file.write(f"pretrained,{score[1]},{score[0]}\n")
+    with open("../data/results/results.csv", "a", encoding="utf-8") as file:
+        file.write(f"pretrained,{score[1]},{score[0]},{slice_mode},{image_size}\n")
 
     model.save('../models/pretrained_vgg16.h5')
 
@@ -619,6 +614,7 @@ def train_and_test_lstm_model():
     # Load data
     train_data, test_data, train_labels, test_labels = load_data()
     # Create LSTM model and train
+    pass
 
 
 def process_labels(labels):
@@ -642,28 +638,36 @@ def process_labels(labels):
     return np.array(labels)
 
 
-def image_data_classification():
+def prepare_files():
+    # If results.csv doesn't exist
+    if not os.path.exists("../data/results/results.csv"):
+        # Create results.csv
+        with open("../data/results/results.csv", "w",
+                  encoding="utf-8") as file:
+            file.write("model,acc,loss,slice_mode,image_size\n")
+            
+    if not os.path.exists("../models/training_log.csv"):
+        with open("../models/training_log.csv", "w",
+                  encoding="utf-8") as file:
+            file.write("guid,seed,epochs,batch_size,slice_mode,height,width,acc,loss,test_size,val_size,individual\n")
+
+
+def image_data_classification(im, sl):
     """Image data classification"""
+    global MRI_IMAGE_DIR
     global image_size
     global slice_mode
-    global MRI_IMAGE_DIR
-    image_size = (150, 150)
-    # "center", "average_center", "area"
-    slice_mode = "average_center"
     MRI_IMAGE_DIR = "../data/mri_images"
-    print(f"[INFO] Image data classification\n{image_size}\t{slice_mode}")
-    # ! Prepare data
-    start = time.time()
-    from image_data.image_prepare import prepare_images
-    print(
-        f"[INFO] Prepare images file imported in {time.time() - start:.2f} seconds"
-    )
-    prepare_images(image_size, slice_mode)
-    # if ../data/{slice_mode} doesn't exist, create it
+    image_size = im
+    slice_mode = sl
+    prepare_files()
+    print("")
+    print(f"[INFO] Image data classification")
+    # if ../data/slice_mode doesn't exist, create it
     if not os.path.exists(f"../data/{slice_mode}"):
         os.makedirs(f"../data/{slice_mode}")
 
-    # If clinical_data.csv does not exist
+    # ! If clinical_data does not exist for these settings, create it
     if not os.path.isfile(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv'):
         # ! Load clinical data associated with mri scans
         # Load in mri data schema
@@ -674,7 +678,7 @@ def image_data_classification():
         # Save data to file
         clinical_data.to_csv("../data/filtered_data.csv", index=False)
         # Create a tabular representation of the classification for each image in the data
-        clinical_data = tabularise_image_data(clinical_data)
+        clinical_data = link_tabular_to_image_data(clinical_data)
         # If any mri scans are corrupted, remove them from the tabular data
         if os.path.exists("../data/invalid_files.csv"):
             # Load invalid_files.csv
@@ -693,7 +697,12 @@ def image_data_classification():
         labels = np.asarray(process_labels(labels).tolist())
 
         # ! Create a training and test set of images corresponding to clinical data
-        images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy", allow_pickle=True)
+        file_name = f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy"
+        images = np.load(file_name, allow_pickle=True)
+        
+        print(f"[INFO]  {len(images)} images loaded paired with {len(labels)} labels")
+        print(f"\t\tSlice: {slice_mode}")
+        print(f"\t\tSize: {image_size}")
 
         # Remove mri images that have invalid labels
         images = np.delete(images, to_be_classified, axis=0)
@@ -705,18 +714,16 @@ def image_data_classification():
         ]
         # append hashes as new column to clinical_data
         clinical_data["IMAGE_HASH"] = hashes
-        clinical_data.to_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv',
-                             index=False)
+        clinical_data.to_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv', index=False)
 
     # ! Load clinical and image data
     # Load clinical data from file
-    clinical_data = pd.read_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv',
-                                low_memory=False)
+    clinical_data = pd.read_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv', low_memory=False)
     # get image labels as np array
     labels = np.asarray(clinical_data['DIAGNOSIS'].tolist())
+
     # Load all images
-    images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy",
-                     allow_pickle=True)
+    images = np.load(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy", allow_pickle=True)
 
     # Generate list of hashes for each image as to link images to corresponding data
     hashes = [
@@ -725,43 +732,55 @@ def image_data_classification():
     ]
 
     invalid_hashes = []
-    for i, hash in enumerate(hashes):
-        if hash not in clinical_data["IMAGE_HASH"].tolist():
+    for i, image_hash in enumerate(hashes):
+        if image_hash not in clinical_data["IMAGE_HASH"].tolist():
             invalid_hashes.append(i)
     # Remove invalid images from images
     images = np.delete(images, invalid_hashes, axis=0)
 
     # Perform stratified train/test split on images and labels
     train_data, test_data, train_labels, test_labels = train_test_split(
-        images, labels, test_size=0.1, random_state=42, stratify=labels)
+        images, labels, test_size=0.2, random_state=42, stratify=labels
+    )
 
-    print(f"[INFO] {train_data.shape[0]} training samples")
-    print(f"[INFO] {test_data.shape[0]} test samples")
+    # Split train into train and val
+    train_data, val_data, train_labels, val_labels = train_test_split(
+        train_data, train_labels, test_size = 0.2, random_state=42, stratify=train_labels
+    )
 
-    # If results.txt doesn't exist
-    if not os.path.exists("../data/results/results.txt"):
-        # Create results.txt
-        with open("../data/results/results.txt", "w",
-                  encoding="utf-8") as file:
-            file.write("model,acc,loss")
+    # Augment training data
+    datagen = ImageDataGenerator(
+        rotation_range=20,
+        width_shift_range=0.2,
+        height_shift_range=0.2,
+        shear_range=0.2,
+        zoom_range=0.2,
+        horizontal_flip=True,
+        vertical_flip=True,
+        fill_mode="nearest"
+    )
+    # Fit datagen to training data
+    datagen.fit(train_data)
+
+    print(f"[INFO]  {len(train_data)} images in training set")
+    print(f"\tTrain NC: {train_labels.tolist().count(0):<3}")
+    print(f"\tTrain AD: {train_labels.tolist().count(1):<3}")
+    print(f"[INFO]  {len(test_data)} images in testing set")
+    print(f"\tTest NC: {test_labels.tolist().count(0):<3}")
+    print(f"\tTest AD: {test_labels.tolist().count(1):<3}")
 
     # ! Train and test own CNN model
-    # train_and_test(train_data, test_data, train_labels, test_labels)
+    train_and_test(train_data, val_data, test_data, train_labels, val_labels, test_labels)
     # ! Train and test pre-trained CNN model (ResNET50)
     # train_and_test_pretrained(train_data, test_data, train_labels, test_labels)
     # ! Train and test model with self-attention layer
     # train_and_test_attention(train_data, test_data, train_labels, test_labels)
-
-    train_data_hashes = [
-        hashlib.sha256(train_data[i].tobytes()).hexdigest()
-        for i in range(len(train_data))
-    ]
-    # Get patient_id as string for first element in train_data_hashes from clinical data
-    patient_id = str(
-        clinical_data.loc[clinical_data["IMAGE_HASH"] == train_data_hashes[0],
-                          "NAME"].values[0])
+    
     # ! Plot entire mri scan
-    plot_mri_slices(train_data[0], train_labels[0], patient_id)
+    # patient_id = str(
+    #     clinical_data.loc[clinical_data["IMAGE_HASH"] == train_data_hashes[0],
+    #                       "NAME"].values[0])
+    # plot_mri_slices(train_data[0], train_labels[0], patient_id, slice_mode)
 
 
 if __name__ == "__main__":

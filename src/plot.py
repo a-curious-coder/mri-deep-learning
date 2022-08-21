@@ -9,7 +9,8 @@ from skimage.util import montage
 # Import matplotlib
 import matplotlib.pyplot as plt
 import csv
-
+from matplotlib import cm as class_mapping
+from mpl_toolkits.axes_grid1 import ImageGrid
 
 def create_plot_folder(patient_id = None):
     """ Create folder for plots
@@ -162,6 +163,29 @@ def plot_history(history=None, guid=None):
     fig.write_image(f"../plots/epochs_{max(epochs)}/{guid}_loss.png")
 
     print(f"[INFO] Saved acc/loss plots to ../plots/epochs_{max(epochs)}")
+
+
+def show_grid(image_list, nrows, ncols, label_list=None, show_labels=False, savename=None, figsize=(10,10), showaxis='off', class_mapping = None):
+    
+    if type(image_list) is not list:
+        if(image_list.shape[-1]==1):
+            image_list = [image_list[i,:,:,0] for i in range(image_list.shape[0])]
+        elif(image_list.shape[-1]==3):
+            image_list = [image_list[i,:,:,:] for i in range(image_list.shape[0])]
+    fig = plt.figure(None, figsize,frameon=False)
+    grid = ImageGrid(fig, 111,  # similar to subplot(111)
+                     nrows_ncols=(nrows, ncols),  # creates 2x2 grid of axes
+                     axes_pad=0.3,  # pad between axes in inch.
+                     share_all=True,
+                     )
+    for i in range(nrows*ncols):
+        ax = grid[i]
+        ax.imshow(image_list[i],cmap='Greys_r')  # The AxesGrid object work as a list of axes.
+        ax.axis('off')
+        if show_labels:
+            ax.set_title(class_mapping[label_list[i]])
+    if savename != None:
+        plt.savefig(savename,bbox_inches='tight')
 
 
 def plot_mri_slices(image, label, patient_id=None, slice_mode = "center", show = False):

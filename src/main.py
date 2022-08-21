@@ -17,6 +17,7 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 image_size = (72, 72)
 slice_mode = "average_center" # center, average_center, area
 mri_scans = "../data/mri_images"
+test_size = 0.1
 
 def main():
     """Main"""
@@ -28,6 +29,12 @@ def main():
         # Prettiness for terminal
         print_title()
         print_time_left()
+        print("Current Settings")
+        print(f"Image Size: {image_size}")
+        print(f"Slice Mode: {slice_mode}")
+        print(f"MRI Scans: {mri_scans}")
+        print(f"Test Size: {test_size}")
+        print("\n")
     except ImportError:
         print("[ERROR]\tCould not import misc.py")
     
@@ -40,6 +47,7 @@ def main():
         print("[1]\tImage data")
         print("[2]\tTabular data")
         print("[3]\tExit")
+        print("[6]\tPrepare data")
         print("\n")
         arg = input("[*]\tSelect an option: ")
         print("\n")
@@ -52,10 +60,7 @@ def main():
 
     if arg in ["image", "1"]:
         start = time.time()
-        # ! Prepare data
-        from image_data.image_prepare import prepare_images
-        prepare_images(image_size, slice_mode)
-        from image_data.image_data import image_data_classification
+        from image_data.train_test_models import image_data_classification
         print(f"[INFO] Image data file imported in {time.time() - start:.2f} seconds")
         image_data_classification(image_size, slice_mode)
     elif arg in ["tabular", "2"]:
@@ -64,7 +69,7 @@ def main():
     elif arg in ["", "3", "exit"]:
         print("[EXIT]")
     elif arg in ["4", "testplot"]:
-        from image_data.image_prepare import main as m
+        from image_data.prepare_data import main as m
         patient_id = input("[*]\tEnter patient ID: ")
         # Does patient ID directory exists
         if os.path.exists(f"../data/mri_images/{patient_id}"):
@@ -74,8 +79,8 @@ def main():
             m()
     elif arg in ["5"]:
         # Test all combinations of parameters
-        from image_data.image_prepare import prepare_images
-        from image_data.image_data import image_data_classification
+        from image_data.prepare_data import prepare_images
+        from image_data.train_test_models import image_data_classification
 
         image_sizes = [(72, 72), (144, 144), (150, 150)]
         slice_modes = ["center", "average_center", "area"]
@@ -85,7 +90,10 @@ def main():
                 print(f"[INFO] Images with size {img_size} and slice mode {slc_mode}")
                 prepare_images(img_size, slc_mode)
                 image_data_classification(img_size, slc_mode)
-
+    elif arg in ["6"]:
+        # Prepare data
+        from image_data.prepare_data import prepare_data
+        prepare_data(test_size, slice_mode, image_size)
 
     else:
         print(f"[ERROR] Invalid argument '{arg}'")

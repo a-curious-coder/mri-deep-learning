@@ -13,7 +13,9 @@ models/
 *.html
 *.DS_Store
 *.nii
-
+data/
+logs/
+docs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

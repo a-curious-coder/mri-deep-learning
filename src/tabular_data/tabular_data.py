@@ -19,7 +19,7 @@ from sklearn.tree import DecisionTreeClassifier
 from tensorflow.keras import layers, models
 
 from plot import *
-from src.tabular_data.model import *
+from tabular_data.model import *
 
 
 def tabular_data(client):

@@ -1,13 +1,15 @@
 """ Prepare data for project"""
 import os
 import shutil
-import nibabel as nib
-from PIL import Image
+
 import cv2
-from sklearn.model_selection import train_test_split
+import nibabel as nib
 import numpy as np
 import pandas as pd
+from PIL import Image
 from skimage.transform import resize
+from sklearn.model_selection import train_test_split
+
 from plot import *
 
 
@@ -507,7 +509,7 @@ def prepare_tabular(slice_mode, image_size):
         os.makedirs(f"../data/{slice_mode}")
 
     # ! If clinical_data does not exist for these settings, create it
-    if not os.path.isfile(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv'):
+    if not os.path.isfile(f'../data/clinical_data.csv'):
         # ! Load clinical data associated with mri scans
         # Load in mri data schema
         clinical_data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
@@ -523,7 +525,7 @@ def prepare_tabular(slice_mode, image_size):
         # ! Binarise labels (MCI & AD = AD)
         clinical_data['LABEL'] = np.asarray(binarise_labels(clinical_data['LABEL']).tolist())
         # Save clinical data to file
-        clinical_data.to_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv', index=False)
+        clinical_data.to_csv(f'../data/clinical_data.csv', index=False)
 
 
 def prepare_images(test_size, slice_mode, image_size, verbose=1):
@@ -546,7 +548,7 @@ def prepare_images(test_size, slice_mode, image_size, verbose=1):
         print("[INFO] Deleted all npy files")
 
     
-    clinical_data = pd.read_csv(f'../data/{slice_mode}/clinical_data_{image_size[0]}.csv')
+    clinical_data = pd.read_csv(f'../data/clinical_data.csv')
     # Get unique labels from tabular data
     labels = clinical_data["LABEL"].unique()
     create_dataset_folders(labels, slice_mode, image_size)

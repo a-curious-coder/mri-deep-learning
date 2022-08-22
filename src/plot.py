@@ -1,16 +1,17 @@
+import csv
+import os
 from os.path import exists
 
-import os
+# Import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import cm as class_mapping
+from mpl_toolkits.axes_grid1 import ImageGrid
 from plotly import express as px
 from plotly import graph_objs as go
 from skimage.transform import resize
 from skimage.util import montage
-# Import matplotlib
-import matplotlib.pyplot as plt
-import csv
-from matplotlib import cm as class_mapping
-from mpl_toolkits.axes_grid1 import ImageGrid
+import pandas as pd
 
 def create_plot_folder(patient_id = None):
     """ Create folder for plots
@@ -66,7 +67,20 @@ def smooth_curve(points, factor=0.8):
     return smoothed_points
 
 
-def plot_history(history=None, guid=None):
+def generate_caption(settings):
+    """ Create string of details from settings dict
+    
+    Args:
+        settings (dict): settings
+    """
+    caption = ""
+    for key, value in settings.items():
+        caption += f"{key}: {value}\n"
+    caption = caption.replace("_", " ")
+    return caption
+
+
+def plot_history(history, guid, model_type, caption="test"):
     """Plot training history
 
     Args:
@@ -76,73 +90,55 @@ def plot_history(history=None, guid=None):
     Returns:
         None
     """
-    if history is None:
-        if guid is None:
-            guid = "9_5_32"
-        # Load acc and val_acc from results
-        acc_df = pd.read_csv(f"../data/results/acc_{guid}.csv")
-        acc = acc_df["acc"].values
-        val_acc = acc_df["val_acc"].values
-        # Load loss and val_loss from results
-        loss_df = pd.read_csv(f"../data/results/loss_{guid}.csv")
-        loss = loss_df["loss"].values
-        val_loss = loss_df["val_loss"].values
-    else:
-        acc = history["acc"]
-        val_acc = history["val_acc"]
-        loss = history["loss"]
-        val_loss = history["val_loss"]
-
-        # Save accuracies to csv file
-        with open(f"../data/results/acc_{guid}.csv", "w", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["epoch", "acc", "val_acc"])
-            for i in range(len(acc)):
-                writer.writerow([i, acc[i], val_acc[i]])
-
-        # Save losses to csv file
-        with open(f"../data/results/loss_{guid}.csv", "w", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["epoch", "loss", "val_loss"])
-            for i in range(len(loss)):
-                writer.writerow([i, loss[i], val_loss[i]])
+    acc = history["acc"]
+    val_acc = history["val_acc"]
+    loss = history["loss"]
+    val_loss = history["val_loss"]
 
     # Generate list of epochs
-    epochs = []
-    for i in range(1, len(acc)+1):
-        epochs.append(i)
-
-    # Make sure folder epochs_{epochs} exists
-    if not exists(f"../plots/epochs_{len(epochs)}"):
-        os.mkdir(f"../plots/epochs_{len(epochs)}")
+    epochs = [i for i in range(1, len(acc)+1)]
 
     # Plot training and validation accuracy using Plotly
-    fig = go.Figure(data=[
-            go.Scatter(x=epochs,
-                        y=smooth_curve(acc),
-                        mode="markers",
-                        name="Training Accuracy",
-                        marker=dict(size=10)),
-            go.Scatter(x=epochs,
-                        y=smooth_curve(val_acc),
-                        mode="lines",
-                        line=dict(width=2),
-                        name="Validation Accuracy")
-    ])
+    fig = go.Figure(
+        data=[
+            go.Scatter(
+                x=epochs,
+                y=smooth_curve(acc),
+                mode="markers",
+                name="Training Accuracy",
+                marker=dict(size=10)
+            ),
+            go.Scatter(
+                x=epochs,
+                y=smooth_curve(val_acc),
+                mode="lines",
+                line=dict(width=2),
+                name="Validation Accuracy"
+            )
+        ]
+    )
+
     # Update layout of plot
-    fig.update_layout(title="Training and Validation Accuracy",
-                        width=800,
-                        xaxis=dict(showgrid=False,
-                                    title="Epochs"),
-                        yaxis=dict(showgrid=False,
-                                    title="Accuracy"))
+    fig.update_layout(
+        title=caption,
+        width=800,
+        xaxis=dict(
+            showgrid=False,
+            title="Epochs"
+        ),
+        yaxis=dict(
+            showgrid=False,
+            title="Accuracy"
+        )
+    )
     # Save plot to file
-    fig.write_image(f"../plots/epochs_{max(epochs)}/{guid}_acc.png")
+    fig.write_image(f"../plots/{model_type}/{guid}_acc.png")
 
 
     
     # Plot training and validation loss using Plotly
-    fig = go.Figure(data=[
+    fig = go.Figure(
+        data=[
             go.Scatter(x=epochs,
                         y=smooth_curve(loss),
                         mode="markers",
@@ -153,16 +149,22 @@ def plot_history(history=None, guid=None):
                         mode="lines",
                         name="Validation Loss",
                         line=dict(width=2))
-    ])
-    fig.update_layout(title="Training and Validation Loss",
-                        width=800,
-                        xaxis=dict(showgrid=False,
-                                    title="Epochs"),
-                        yaxis=dict(showgrid=False,
-                                    title="Loss"))
-    fig.write_image(f"../plots/epochs_{max(epochs)}/{guid}_loss.png")
-
-    print(f"[INFO] Saved acc/loss plots to ../plots/epochs_{max(epochs)}")
+        ]
+    )
+    
+    fig.update_layout(
+        title=caption,
+        width=800,
+        xaxis=dict(
+            showgrid=False,
+            title="Epochs"
+        ),
+        yaxis=dict(
+            showgrid=False,
+            title="Loss"
+        )
+    )
+    fig.write_image(f"../plots/{model_type}/{guid}_loss.png")
 
 
 def show_grid(image_list, nrows, ncols, label_list=None, show_labels=False, savename=None, figsize=(10,10), showaxis='off', class_mapping = None):

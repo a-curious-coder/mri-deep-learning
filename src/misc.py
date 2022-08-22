@@ -1,6 +1,7 @@
 """ Miscellaneous functions"""
-import os
 import datetime
+import os
+
 import numpy as np
 
 
@@ -8,6 +9,7 @@ def cls():
     """Clear terminal"""
     # clear the terminal before running
     os.system("cls" if os.name == "nt" else "clear")
+
 
 def print_title():
     """ Prints program title """
@@ -51,14 +53,13 @@ def print_time_left():
     )
 
 
-
 def prepare_dir_structure():
     """Creates necessary folders in preparation for data/models saved"""
     directories = [
-        "../plots", "../plots/confusion_matrices", "../plots/F",
-        "../plots/F/NL", "../plots/F/MCI", "../plots/F/AD", "../plots/M",
-        "../plots/M/NL", "../plots/M/MCI", "../plots/M/AD", "../models",
-        "../data", "../optimal_parms", "../data/results", "../data/history"
+        "../plots", "../plots/confusion_matrices", "../plots/own_models", "../plots/transfer_models", "../plots/lstm_models",
+        "../models",
+        "../data", "../data/history",
+        "../optimal_parms"
     ]
 
     for directory in directories:

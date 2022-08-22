@@ -48,9 +48,7 @@ Alzheimer's in an incurable disease ravaging the elderly population. Through the
 
 ## Setup
 
-Create an [AWS](https://aws.amazon.com) account, create a user profile through IAM and create a storage bucket through S3. Upload your MRI data to the bucket and change the load_data function according to your bucket name and directories to file(s)
-
-Create and initialise virtual environment
+Open a terminal in this project's working directory and create a virtual environment
 
 ```bash
 # Create virtual environment
@@ -62,23 +60,17 @@ virtualenv .venv
 source .venv/bin/activate
 ```
 
-Download and install all required libraries
+Download and install all required libraries from requirements.txt
 
 ```bash
 pip install -r requirements.txt
 ```
 
-Create ".env" file and populate it with variables containing your AWS api keys.
-
+To train the image CNN model, run the following command:
+NOTE: Ensure you have a folder named "data" with a subfolder named "dataset"
 ```bash
-ACCESS_KEY=*API KEY GOES HERE EXCLUDING ASTERISKS*
-SECRET_ACCESS_KEY=*SECRET API KEY GOES HERE EXCLUDING ASTERISKS*
-```
-
-Run the main python file
-
-```bash
-python main.py
+cd src/
+python main.py 1
 ```
 
 ## Dataset Description

@@ -1,15 +1,16 @@
 """ Prepare data for project"""
 import os
 import shutil
+from math import ceil
 
 import cv2
 import nibabel as nib
 import numpy as np
 import pandas as pd
-from PIL import Image
 from skimage.transform import resize
 from sklearn.model_selection import train_test_split
 
+import image_data.constants as constants
 from plot import *
 
 
@@ -69,7 +70,7 @@ def preprocess_tab_data(data, scan_num=None, project=None):
     return data
 
 
-def binarise_labels(labels):
+def encode_labels(labels):
     """ Prepares labels for
         Binary classification
     Args:
@@ -78,14 +79,9 @@ def binarise_labels(labels):
     Returns:
         list: labels
     """
-    # Replace labels in series with categorical labels
-    labels = pd.Series(labels)
-    # Replace AD and MCI with 1
-    # labels[labels == "AD"] = 1
-    labels[labels == "MCI"] = "AD"
-    # Replace NL with 0
-    # labels[labels == "NL"] = 0
-    # Print counts
+    if constants.CLASSIFICATION == 'binary':
+        labels = pd.Series(labels)
+        labels[labels == "MCI"] = "AD"
     print(labels.value_counts())
     return np.array(labels)
 
@@ -119,9 +115,9 @@ def get_mri_scan(patient_id, data_dir=None):
 
     mri_scan = None
     if data_dir is not None:
-        MRI_IMAGE_DIR = data_dir
+        constants.MRI_IMAGE_DIR = data_dir
     # print(f"[INFO] Loading MRI scan for patient {patient_id} ")
-    files = os.listdir(MRI_IMAGE_DIR + "/" + patient_id)
+    files = os.listdir(constants.MRI_IMAGE_DIR + "/" + patient_id)
 
     # Collect all .nii files
     files = [file for file in files if file.endswith(".nii")]
@@ -135,7 +131,7 @@ def get_mri_scan(patient_id, data_dir=None):
         for file in files:
             # If file is an MRI scan (With .nii extension)
             if file.endswith(".nii"):
-                mri_scan = nib.load(MRI_IMAGE_DIR + "/" + patient_id + "/" +
+                mri_scan = nib.load(constants.MRI_IMAGE_DIR + "/" + patient_id + "/" +
                                     file)
 
     # If multiple mri scan files are found
@@ -169,18 +165,14 @@ def get_mri_data(patient_id, data_dir=None, verbose=False):
             print(f"[!]\tNo MRI scan file found for patient: {patient_id}")
         # ! If invalid_files.csv doesn't exist, create it
         if not os.path.isfile("../data/invalid_files.csv"):
-            with open("../data/invalid_files.csv", "w",
-                      encoding="utf-8") as file:
+            with open("../data/invalid_files.csv", "w", encoding="utf-8") as file:
                 file.write("patient_id\n")
             # Close file
             file.close()
         
         # ! If patient_id is not in invalid_files.csv, add it
-        if patient_id not in open("../data/invalid_files.csv",
-                                  "r",
-                                  encoding="utf-8").read():
-            with open("../data/invalid_files.csv", "a",
-                      encoding="utf-8") as file:
+        if patient_id not in open("../data/invalid_files.csv", "r", encoding="utf-8").read():
+            with open("../data/invalid_files.csv", "a", encoding="utf-8") as file:
                 file.write(patient_id + "\n")
             # Close file
             file.close()
@@ -202,7 +194,7 @@ def get_mri_scans(patient_ids: list):
         list: list of mri scans
     """
     return [
-        get_mri_scan(patient_id, MRI_IMAGE_DIR) for patient_id in patient_ids
+        get_mri_scan(patient_id, constants.MRI_IMAGE_DIR) for patient_id in patient_ids
     ]
 
 
@@ -220,7 +212,7 @@ def get_mri_scans_data(patient_ids: list):
         MRI Scans
     """
     return [
-        get_mri_data(patient_id, MRI_IMAGE_DIR) for patient_id in patient_ids
+        get_mri_data(patient_id, constants.MRI_IMAGE_DIR) for patient_id in patient_ids
     ]
 
 
@@ -346,6 +338,28 @@ def get_area_slices(mri_scan_data):
     return [slice_0, slice_1, slice_2]
 
 
+def get_axial_slices(mri_scan_data, n, mode):
+    """ Extract n axial slices from mri scan
+    NOTE: Axial slices are contained in the third dimension
+    Args:
+        mri_scan_data (np.array): 3D array of scan data
+        n (int): number of slices to extract
+        mode (str): mode to extract slices from scan
+    """
+    # There are three modes: 'center', 'average', 'area'
+    slices = None
+    # We want to extract n slices from the scan
+    if mode == "center":
+        # Lower bound for slice index
+        lb = ceil(((mri_scan_data.shape[2] - 1) // 2) - (n // 2))
+        # Upper bound for slice index
+        ub = ceil(((mri_scan_data.shape[2] - 1) // 2) + (n // 2))
+        # Get n center axial slices 
+        slices = mri_scan_data[:, :, lb:ub]
+        print(f"{ub-lb}/{n} slices selected")
+    return slices
+
+
 def delete_all_npy_files():
     """ Delete all npy files in the current directory"""
     # List all .npy files in dataset
@@ -355,43 +369,10 @@ def delete_all_npy_files():
         os.remove(file)
 
 
-def merge_all_data(slice_mode, image_size, patient_ids):
-    """Merge all slices into one file
-    Args:
-        slice_mode (str): Mode of slice extraction
-        image_size (int): Size of image to be extracted
-        patient_ids (list): List of patient ids
-    """
-    # List all .npy files in dataset
-    npy_files = get_files("../data/mri_images", ".npy")
-    # Filter npy_files to image_size
-    npy_files = [npy_file for npy_file in npy_files if npy_file.endswith(
-        f"{slice_mode}_{image_size[0]}.npy")]
-    print(f"{slice_mode}_{image_size[0]}.npy")
-    # Filter npy_files if name contains slice_mode
-    npy_files = [npy_file for npy_file in npy_files if slice_mode in npy_file]
-
-    # Count number of .npy files
-    count = 0
-    for npy_file in npy_files:
-        # Replace slash depending on OS
-        npy_file = npy_file.replace("\\", "/")
-        filename = npy_file.split("/")[-2]
-        if filename in patient_ids:
-            count += 1
-    
-    print(f"[INFO] \t{count}/{len(patient_ids)} patients have center slices available for use")
-    # Merge all .npy files into one array
-    npy_files = np.stack([np.load(npy_file, allow_pickle=True) for npy_file in npy_files])
-    # Save npy file
-    np.save(f"../data/dataset/all_{slice_mode}_slices_{image_size[0]}.npy", npy_files, allow_pickle=True)
-
-
-def process_patient_slices(patient_id, slice_mode, image_size, patient_slices_dir):
+def process_patient_slices(patient_id, patient_slices_dir):
     """ Processes the slices of a patient
     Args:
         patient_id (str): patient's id
-        slice_mode (str): mode to extracting and processing the slices
         patient_slices_dir (str): path to save patient slices
     
     Returns:
@@ -403,17 +384,19 @@ def process_patient_slices(patient_id, slice_mode, image_size, patient_slices_di
 
     if mri_data is not None:
         # ! 1 Extract slices from MRI scan data dependent on slice_mode
-        if slice_mode == "center":
+        if constants.SLICE_MODE == "center":
             scan_slices = get_center_slices(mri_data)
-        elif slice_mode == "average_center":
+        elif constants.SLICE_MODE == "average_center":
             scan_slices = get_average_center_slices(mri_data)
-        elif slice_mode == "area":
+        elif constants.SLICE_MODE == "area":
             scan_slices = get_area_slices(mri_data)
+        elif constants.SLICE_MODE == "axial":
+            scan_slices = get_axial_slices(mri_data, 3, "center")
         # Get smallest dimension of from all elements in scan_slices
         smallest_dim = min(min(scan_slices[0].shape), min(scan_slices[1].shape), min(scan_slices[2].shape))
         image_size = (smallest_dim, smallest_dim)
         # print(type())
-        # ! 2 Normalise pixel values in each scan slice
+        # ! 2 Normalise pixel values in each scan slice : DEPRECATED as using ImageDataGenerator
         # for index, scan_slice in enumerate(scan_slices):
         #     scan_slices[index] = normalise_data(scan_slice)
         
@@ -430,30 +413,34 @@ def process_patient_slices(patient_id, slice_mode, image_size, patient_slices_di
         # ! 5 Save center slices to (npy) *png file
         # np.save(patient_slices_dir, processed_slices)
         cv2.imwrite(patient_slices_dir, processed_slices)
-
+        
         return True
-    
-    # Failed to retrieve MRI data
+
+    # NOTE: If reaches this point, failed to retrieve MRI data
     return False
 
 
-def create_dataset_folders(labels, slice_mode, image_size):
+def create_dataset_folders(labels):
     """ Create dataset folder for each label
     Args:
         labels (list): list of labels
         slice_mode (str): mode to extracting and processing the slices
     """
-    if not os.path.exists(f"../data/dataset/{slice_mode}_{image_size[0]}"):
-        os.mkdir(f"../data/dataset/{slice_mode}_{image_size[0]}")
+
+    if not os.path.exists(f"../data/dataset/{constants.CLASSIFICATION}"):
+        os.mkdir(f"../data/dataset/{constants.CLASSIFICATION}")
+
+    if not os.path.exists(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}"):
+        os.mkdir(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}")
 
     datasets = ['train', 'test']
-    
+
     for dataset in datasets:
-        if not os.path.exists(f"../data/dataset/{slice_mode}_{image_size[0]}/{dataset}"):
-            os.mkdir(f"../data/dataset/{slice_mode}_{image_size[0]}/{dataset}")
+        if not os.path.exists(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{dataset}"):
+            os.mkdir(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{dataset}")
         for label in labels:
-            if not os.path.exists(f"../data/dataset/{slice_mode}_{image_size[0]}/{dataset}/{label}"):
-                os.mkdir(f"../data/dataset/{slice_mode}_{image_size[0]}/{dataset}/{label}")
+            if not os.path.exists(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{dataset}/{label}"):
+                os.mkdir(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{dataset}/{label}")
 
 
 def link_tabular_to_image_data(data=None):
@@ -496,20 +483,16 @@ def link_tabular_to_image_data(data=None):
     return data
 
 
-def prepare_tabular(slice_mode, image_size):
+def prepare_tabular():
     """ Prepares the tabular data for creating the dataset
     Args:
         slice_mode (str): mode to extracting and processing the slices
-        image_size (tuple): size of the image slices
     Returns:
         pd.DataFrame: tabular data with labels
     """
-    # if ../data/slice_mode doesn't exist, create it
-    if not os.path.exists(f"../data/{slice_mode}"):
-        os.makedirs(f"../data/{slice_mode}")
-
+    rewrite_tabular = True
     # ! If clinical_data does not exist for these settings, create it
-    if not os.path.isfile(f'../data/clinical_data.csv'):
+    if not os.path.isfile(f'../data/{constants.CLASSIFICATION}/clinical_data.csv') or rewrite_tabular:
         # ! Load clinical data associated with mri scans
         # Load in mri data schema
         clinical_data = pd.read_csv("../data/tabular_data.csv", low_memory=False)
@@ -517,23 +500,18 @@ def prepare_tabular(slice_mode, image_size):
         clinical_data = preprocess_tab_data(clinical_data, scan_num=1, project="AIBL")
         # Create a tabular representation of the classification for each image in the data
         clinical_data = link_tabular_to_image_data(clinical_data)
-
-        print(f"{'Size':<10} {'Mode':<10} {'# Images':<10}")
-        patient_ids = clinical_data['PATIENT_ID'].unique()
-        print(f"{image_size[0]:<10} {slice_mode:<10} {len(patient_ids):<10}")
-        
         # ! Binarise labels (MCI & AD = AD)
-        clinical_data['LABEL'] = np.asarray(binarise_labels(clinical_data['LABEL']).tolist())
+        clinical_data['LABEL'] = np.asarray(encode_labels(clinical_data['LABEL']).tolist())
+        if not os.path.exists(f"../data/{constants.CLASSIFICATION}"):
+            os.mkdir(f"../data/{constants.CLASSIFICATION}")
         # Save clinical data to file
-        clinical_data.to_csv(f'../data/clinical_data.csv', index=False)
+        clinical_data.to_csv(f'../data/{constants.CLASSIFICATION}/clinical_data.csv', index=False)
 
 
-def prepare_images(test_size, slice_mode, image_size, verbose=1):
+def prepare_images(verbose=1):
     """ prepares images for the project
     
     Args:
-        image_size (tuple): size of the image
-        slice_mode (str): mode of slicing
         verbose (int): verbosity level
             1 - print progress
             2 - print progress and errors
@@ -548,17 +526,12 @@ def prepare_images(test_size, slice_mode, image_size, verbose=1):
         print("[INFO] Deleted all npy files")
 
     
-    clinical_data = pd.read_csv(f'../data/clinical_data.csv')
-    # Get unique labels from tabular data
-    labels = clinical_data["LABEL"].unique()
-    create_dataset_folders(labels, slice_mode, image_size)
+    clinical_data = pd.read_csv(f'../data/{constants.CLASSIFICATION}/clinical_data.csv')
     # Get all patient ids from tabular data
     patient_ids = clinical_data["PATIENT_ID"]
 
     # Split patient_ids stratified by label into train and test sets
-    train_patient_ids, _ = train_test_split(patient_ids, test_size=test_size, stratify=clinical_data["LABEL"])
-    
-    print(f"[INFO] Preparing mri slices of size {image_size}")
+    train_patient_ids, _ = train_test_split(patient_ids, test_size=constants.TEST_SIZE, stratify=clinical_data["LABEL"], random_state=42)
 
     # !  Re-organises MRI data away from AIBL folder structure
     if os.path.exists("../AIBL"):
@@ -605,47 +578,92 @@ def prepare_images(test_size, slice_mode, image_size, verbose=1):
                     print(f"[INFO]  Patient {patient_id} have no scans")
     
     missed = 0
-    processed = 0
+    created = 0
+    moved = 0
+    already_exists = 0
     overwrite = False
     # ! Extract slices from mri scans in dataset
-    print(f"[INFO] {'Processed':<10} {'Missed':<10} {'# Images':<10}")
+    print(f"[INFO] {'Created':<10} {'Moved':<10} {'Missed':<10} {'Exists':<10} {'# Images':<10}")
     for count, patient_id in enumerate(patient_ids):
         # Determine if slices of patient are in train or test set
         dataset = "train" if patient_id in train_patient_ids.values else "test"
         # Get patient's diagnosis label
         patient_class = clinical_data[clinical_data["PATIENT_ID"] == patient_id]["LABEL"].values[0]
         # Create patient's folder in dataset folder
-        patient_slices_dir = f"../data/dataset/{slice_mode}_{image_size[0]}/{dataset}/{patient_class}/{patient_id}.png"
+        patient_slices_dir = f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{dataset}/{patient_class}/{patient_id}.png"
+        # directory it's not supposed to be in
+        bad_dir = patient_slices_dir.replace("test", "train") if "test" in patient_slices_dir.split("/") else patient_slices_dir.replace("train", "test")
+        # If the file had been accidentally relocated to wrong folder
+        if os.path.exists(bad_dir):
+            # Move file to test set
+            shutil.move(bad_dir, patient_slices_dir)
+            moved += 1
         # If the patient doesn't have their scan slices captured
-        if not os.path.exists(patient_slices_dir) or overwrite:
-            result = process_patient_slices(patient_id, slice_mode, image_size, patient_slices_dir)
+        elif not os.path.exists(patient_slices_dir) or overwrite:
+            result = process_patient_slices(patient_id, patient_slices_dir)
             if result:
-                processed += 1
+                created += 1
             else:
                 missed += 1
-
+        else:
+            already_exists += 1
         covered = f"{count} / {len(patient_ids)}"
-        print(f"[INFO]  {processed:<10} {missed:<10} {covered:<10}", end = "\r")
-    print(f"[INFO]  {processed:<10} {missed:<10} {len(patient_ids):<10}")
+        print(f"[INFO] {created:<10} {moved:<10} {missed:<10} {already_exists:<10}{covered:<10}", end = "\r")
+    print(f"[INFO] {created:<10} {moved:<10} {missed:<10} {already_exists:<10}{len(patient_ids):<10}")
     
-    # merge_all_data(slice_mode, image_size)
+    # merge_all_data(constants.SLICE_MODE, image_size)
     print("[INFO] \tFinished preparing images")
 
 
-def prepare_data(test_size, slice_mode, image_size):
+def reset_test_train_set_order(labels):
+    """ Gets training and test """
+    n_files = 0
+    for label in labels:
+        # Get list of files in test and training directories
+        train_files = os.listdir(os.path.join(constants.TRAIN_DIR, label))
+        test_files = os.listdir(os.path.join(constants.TEST_DIR, label))
+
+        # Dictionary of dirs for each file
+        file_dict = {f: os.path.join(constants.TRAIN_DIR, label, f) for f in train_files}
+        test_dict = {f: os.path.join(constants.TEST_DIR, label, f) for f in test_files}
+        # Dictionary containing directories for each data sample with corresponding labels
+        file_dict.update(test_dict)
+        
+        # consistent order of files
+        all_files = list(file_dict.keys())
+        all_files.sort()
+        print(f"Number of files in {label} directory: {len(all_files)}")
+        n_files += len(all_files)
+
+        # Split data samples into training and testing sets based on split ratio
+        train_files = all_files[:int(len(all_files) * (1 - constants.TEST_SIZE))]
+        test_files = all_files[int(len(all_files) * (1 - constants.TEST_SIZE)):]
+
+        # Move files to correct directories
+        for f in train_files:
+            shutil.move(file_dict[f], os.path.join(constants.TRAIN_DIR, label, f))
+        
+        for f in test_files:
+            shutil.move(file_dict[f], os.path.join(constants.TEST_DIR, label, f))
+    print(f"Total number of data samples: {n_files}")
+
+
+def prepare_data():
     """ Prepares data for use in model 
     
     Args:
-        slice_mode (str): The mode of the slices to be used
+        constants.SLICE_MODE (str): The mode of the slices to be used
         image_size (tuple): The size of the images to be used
     
     Returns:
         None
     """
-    global MRI_IMAGE_DIR
-    MRI_IMAGE_DIR = "../data/mri_images"
-    prepare_tabular(slice_mode, image_size)
-    prepare_images(test_size, slice_mode, image_size)
+    # TODO: Add verbose option
+    labels = ["AD", "NL"] if constants.CLASSIFICATION == "binary" else ["AD", "MCI", "NL"]
+    create_dataset_folders(labels)
+    prepare_tabular()
+    reset_test_train_set_order(labels)
+    prepare_images()
 
 
 def main(patient_id = "S231111"):
@@ -659,7 +677,8 @@ def main(patient_id = "S231111"):
     #      create a training dataset for a YOLO model for frame selection
     slice_modes = ["center", "average_center", "area"]
     for slice_mode in slice_modes:
-        result = process_patient_slices(patient_id, slice_mode, image_size)
+        patient_slices_dir = f"../data/dataset/{constants.CLASSIFICATION}/{slice_mode}/{dataset}/{patient_class}/{patient_id}.png"
+        result = process_patient_slices(patient_id, patient_slices_dir)
         if result:
             slices = np.load(f"../data/mri_images/{patient_id}/{patient_id}_{slice_mode}_{image_size[0]}.npy", allow_pickle=True)
             plot_mri_slices(slices, "testlabel", patient_id=patient_id, slice_mode=slice_mode)

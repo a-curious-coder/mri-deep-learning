@@ -5,13 +5,15 @@ from os.path import exists
 # Import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
+import plotly.figure_factory as ff
 from matplotlib import cm as class_mapping
 from mpl_toolkits.axes_grid1 import ImageGrid
 from plotly import express as px
 from plotly import graph_objs as go
 from skimage.transform import resize
 from skimage.util import montage
-import pandas as pd
+
 
 def create_plot_folder(patient_id = None):
     """ Create folder for plots
@@ -80,7 +82,59 @@ def generate_caption(settings):
     return caption
 
 
-def plot_history(history, guid, model_type, caption="test"):
+
+def plot_cm(cm, labels, plot_title, file_name, classification):
+    """ Plot confusion matrix 
+    
+    Args:
+        cm (np.array): Confusion matrix
+        labels (list): List of labels
+        plot_title (str): Title of plot
+        file_name (str): Name of file to save plot
+        classification (str): Classification type
+    """
+
+    data = go.Heatmap(
+        z=cm,
+        y=labels,
+        x=labels,
+        hovertemplate="<br>".join(
+            [
+                "Predicted: <b>%{x}</b>",
+                "Actual: <b>%{y}</b>",
+                "Occurences %{z}",
+                "<extra></extra>",
+            ]
+        ),
+        colorscale="rdylgn",
+    )
+    annotations = []
+    for i, row in enumerate(cm):
+        for j, value in enumerate(row):
+            annotations.append(
+                {
+                    "x": labels[j],
+                    "y": labels[i],
+                    "text": str(value),
+                    "font": {"color": "black", "size": 20},
+                    "xref": "x1",
+                    "yref": "y1",
+                    "showarrow": False,
+                }
+            )
+    layout = go.Layout(
+        title=dict(text=plot_title, x=0.5),
+        xaxis=dict(title="Predicted"),
+        yaxis=dict(title="Actual"),
+        annotations=annotations,
+    )
+
+    fig = go.Figure(data=data, layout=layout)
+    # fig.write_html(f"plots/confusion_matrices/{file_name}.html")
+    fig.write_image(f"../plots/confusion_matrices/{classification}_{file_name}.png")
+
+
+def plot_history(history, guid, model_type, classification, caption="test"):
     """Plot training history
 
     Args:
@@ -90,13 +144,14 @@ def plot_history(history, guid, model_type, caption="test"):
     Returns:
         None
     """
-    acc = history["acc"]
-    val_acc = history["val_acc"]
+    
+    acc = history["acc"] if classification == "binary" else history["sparse_categorical_accuracy"]
+    val_acc = history["val_acc"] if classification == "binary" else history["val_sparse_categorical_accuracy"]
     loss = history["loss"]
     val_loss = history["val_loss"]
 
     # Generate list of epochs
-    epochs = [i for i in range(1, len(acc)+1)]
+    epochs = list(range(1, len(acc) + 1))
 
     # Plot training and validation accuracy using Plotly
     fig = go.Figure(

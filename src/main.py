@@ -12,22 +12,16 @@ import sys
 import time
 
 from image_data.prepare_data import prepare_data
-from image_data.train_test_models import image_data_classification
+from image_data.train_test_models import main as image_data_classification
 from misc import cls, prepare_dir_structure, print_time_left, print_title
 from tabular_data.tabular_data import main as tmain
-
+import image_data.constants as constants
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 
 def main():
     """Main"""
-    global IMAGE_SIZE, SLICE_MODE, TEST_SIZE, VAL_SIZE
-    # Settings
-    IMAGE_SIZE = (72, 72)
-    SLICE_MODE = "average_center" # center, average_center, area
-    TEST_SIZE = 0.2
-    VAL_SIZE = 0.2
     # if misc exists, import it
     try:
         cls()
@@ -35,10 +29,10 @@ def main():
         print_title()
         print_time_left()
         # Print settings headers
-        print(f"{'Image Size':<10} {str(IMAGE_SIZE):<5}")
-        print(f"{'Slice Mode':<10} {SLICE_MODE:<5}")
-        print(f"{'Test Size':<10} {str(TEST_SIZE):<5}")
-        print(f"{'Validation Size':<10} {str(VAL_SIZE):<5}")
+        print(f"{'Image Size':<10} {str(constants.IMAGE_SIZE):<5}")
+        print(f"{'Slice Mode':<10} {constants.SLICE_MODE:<5}")
+        print(f"{'Test Size':<10} {str(constants.TEST_SIZE):<5}")
+        print(f"{'Validation Size':<10} {str(constants.VAL_SIZE):<5}")
 
         print("\n")
     except ImportError:
@@ -68,7 +62,8 @@ def main():
     if arg in ["image", "1"]:
         start = time.time()
         print(f"[INFO] Image data file imported in {time.time() - start:.2f} seconds")
-        image_data_classification(IMAGE_SIZE, SLICE_MODE, ts = TEST_SIZE, vs = VAL_SIZE)
+        prepare_data()
+        image_data_classification()
     elif arg in ["tabular", "2"]:
         tmain()
     elif arg in ["", "3", "exit"]:
@@ -86,12 +81,12 @@ def main():
                     TEST_SIZE = tst_size
                     VAL_SIZE = 0.2
                 print(f"[INFO] Images with size {img_size} and slice mode {slc_mode}")
-                prepare_data(TEST_SIZE, SLICE_MODE, IMAGE_SIZE)
+                prepare_data()
                 image_data_classification(IMAGE_SIZE, SLICE_MODE, ts = TEST_SIZE, vs = VAL_SIZE)
                 
     elif arg in ["5"]:
         # Prepare data
-        prepare_data(TEST_SIZE, SLICE_MODE, IMAGE_SIZE)
+        prepare_data()
 
     else:
         print(f"[ERROR] Invalid argument '{arg}'")

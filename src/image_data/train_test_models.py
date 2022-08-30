@@ -3,20 +3,49 @@ import csv
 import os
 import random
 import shutil
-
+import time
 import numpy as np
 import pandas as pd
-import tensorflow as tf
-from sklearn.metrics import classification_report
-from tensorflow.keras import callbacks, layers, models, optimizers, utils
-from tensorflow.keras.applications.vgg16 import VGG16
-from tensorflow.keras.applications.densenet import DenseNet121
-from tensorflow.keras.constraints import unit_norm
-from tensorflow.keras.layers import GlobalAveragePooling2D
-from tensorflow.keras.models import Model
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from tensorflow.keras.regularizers import l2 as l2_regularizer
-from plot import plot_history, generate_caption
+from sklearn.metrics import classification_report, confusion_matrix
+import tensorflow
+from keras import Input
+from keras.applications.densenet import DenseNet121
+from keras.applications.vgg16 import VGG16
+from keras.applications.inception_resnet_v2 import InceptionResNetV2
+from keras.callbacks import (EarlyStopping, ModelCheckpoint,
+                                        ReduceLROnPlateau, TensorBoard)
+from keras.constraints import unit_norm
+from keras.layers import (Conv2D, Dense, Dropout, Flatten,
+                                     MaxPooling2D, GlobalAveragePooling2D)
+from keras.models import Model, Sequential
+from tensorflow.keras.optimizers import Adam
+from keras.preprocessing.image import ImageDataGenerator
+from keras.regularizers import l2 as l2_regularizer
+from tensorflow.keras.utils import to_categorical
+
+import image_data.constants as constants
+from plot import generate_caption, plot_cm, plot_history
+
+from keras.utils.data_utils import Sequence
+from imblearn.over_sampling import RandomOverSampler
+from imblearn.keras import balanced_batch_generator
+
+class BalancedDataGenerator(Sequence):
+    """ImageDataGenerator + RandomOversampling"""
+    def __init__(self, x, y, datagen, batch_size=32):
+        self.datagen = datagen
+        self.batch_size = min(batch_size, x.shape[0])
+        datagen.fit(x)
+        self.gen, self.steps_per_epoch = balanced_batch_generator(x.reshape(x.shape[0], -1), y, sampler=RandomOverSampler(), batch_size=self.batch_size, keep_sparse=True)
+        self._shape = (self.steps_per_epoch * batch_size, *x.shape[1:])
+        
+    def __len__(self):
+        return self.steps_per_epoch
+
+    def __getitem__(self, idx):
+        x_batch, y_batch = self.gen.__next__()
+        x_batch = x_batch.reshape(-1, *self._shape[1:])
+        return self.datagen.flow(x_batch, y_batch, batch_size=self.batch_size).next()
 
 
 def image_data_eda(data):
@@ -39,9 +68,123 @@ def reset_random_seeds(seed):
         None
     """
     os.environ['PYTHONHASHSEED'] = str(seed)
-    tf.random.set_seed(seed)
+    tensorflow.random.set_seed(seed)
     np.random.seed(seed)
     random.seed(seed)
+
+
+def reset_train_test_sets(labels):
+    """ Gets training and test """
+    n_files = 0
+    for label in labels:
+        # Get list of files in test and training directories
+        train_files = os.listdir(os.path.join(constants.TRAIN_DIR, label))
+        test_files = os.listdir(os.path.join(constants.TEST_DIR, label))
+
+        # Dictionary of dirs for each file
+        file_dict = {f: os.path.join(constants.TRAIN_DIR, label, f) for f in train_files}
+        test_dict = {f: os.path.join(constants.TEST_DIR, label, f) for f in test_files}
+        # Dictionary containing directories for each data sample with corresponding labels
+        file_dict.update(test_dict)
+        
+        # consistent order of files
+        all_files = list(file_dict.keys())
+        all_files.sort()
+        print(f"Number of files in {label} directory: {len(all_files)}")
+        n_files += len(all_files)
+
+        # Split data samples into training and testing sets based on split ratio
+        train_files = all_files[:int(len(all_files) * (1 - constants.TEST_SIZE))]
+        test_files = all_files[int(len(all_files) * (1 - constants.TEST_SIZE)):]
+
+        # Move files to correct directories
+        for f in train_files:
+            shutil.move(file_dict[f], os.path.join(constants.TRAIN_DIR, label, f))
+        
+        for f in test_files:
+            shutil.move(file_dict[f], os.path.join(constants.TEST_DIR, label, f))
+    print(f"Total number of data samples: {n_files}")
+
+
+def save_training_history(history, guid):
+    """ Saves the training history to a csv file
+    Args:
+        history (dict): training history
+        guid (str): guid for the model
+    """
+    if constants.CLASSIFICATION == "binary":
+        val_acc = str(round(np.mean(history['val_acc'])*100, 2)).replace('.', ',')
+        # Get average val_acc
+        guid = str(val_acc) + "_" + guid
+        # Save training history to csv
+        with open(f"../data/history/{constants.CLASSIFICATION}/{guid}.csv", "w", encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["acc", "val_acc", "loss", "val_loss"])
+            for i in range(len(history["acc"])):
+                writer.writerow([
+                    history["acc"][i], history["val_acc"][i],
+                    history["loss"][i], history["val_loss"][i]
+                ])
+    elif constants.CLASSIFICATION == "multiclass":
+        val_acc = str(round(np.mean(history['val_sparse_categorical_accuracy'])*100, 2)).replace('.', ',')
+        # Get average val_acc
+        guid = str(val_acc) + "_" + guid
+        # Save training history to csv
+        with open(f"../data/history/{constants.CLASSIFICATION}/{guid}.csv", "w", encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            writer.writerow(["acc", "val_acc", "loss", "val_loss"])
+            for i in range(len(history["sparse_categorical_accuracy"])):
+                writer.writerow([
+                    history["sparse_categorical_accuracy"][i], history["val_sparse_categorical_accuracy"][i],
+                    history["loss"][i], history["val_loss"][i]
+                ])
+
+
+def count_dataset_files():
+    """ Counts the number of files in the dataset"""
+    file_dir = f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}"
+    # Count png files in all subdirectories of file_dir
+    png_count = 0
+    for _, _, files in os.walk(file_dir):
+        for file in files:
+            if file.endswith(".png"):
+                png_count += 1
+    print(f"[INFO] {png_count} png files in {file_dir}")
+
+
+def reshuffle_test_train_kfold(fold, k):
+    """ Reshuffle images in test/train directories based on fold/k folds"""
+    labels = ["AD", "NL"] if constants.CLASSIFICATION == "binary" else ["AD", "MCI", "NL"]
+    reset_train_test_sets(labels)
+    # Collect files for each label from train and test directories
+    for label in labels:
+        # Get list of files in test and training directories
+        train_files = os.listdir(os.path.join(constants.TRAIN_DIR, label))
+        test_files = os.listdir(os.path.join(constants.TEST_DIR, label))
+        # sort files
+        train_files.sort()
+        test_files.sort()
+        # Dictionary of dirs for each file
+        file_dict = {f: os.path.join(constants.TRAIN_DIR, label, f) for f in train_files}
+        test_dict = {f: os.path.join(constants.TEST_DIR, label, f) for f in test_files}
+        # Merge dicts
+        file_dict.update(test_dict)
+
+        all_files = list(file_dict.keys())
+        # Split all files into k folds
+        folds = np.array_split(all_files, k)
+        # Get test fold
+        test_fold = folds[fold]
+        # Get training folds
+        train_folds = [folds[i] for i in range(k) if i != fold]
+        # Flatten list of lists
+        train_fold = [item for sublist in train_folds for item in sublist]
+        # Move files to correct directories
+        for train_file in train_fold:
+            shutil.move(file_dict[train_file], os.path.join(constants.TRAIN_DIR, label, train_file))
+        for test_file in test_fold:
+            shutil.move(file_dict[test_file], os.path.join(constants.TEST_DIR, label, test_file))
+    count_dataset_files()
 
 
 def reshuffle_test_train_sets(seed):
@@ -50,17 +193,20 @@ def reshuffle_test_train_sets(seed):
         seed (int): seed for random number generator
     """
     print(f"[INFO] Reshuffling test and training sets with seed {seed}")
-    train_dir = f"../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}/train"
-    test_dir = f"../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}/test"
+    labels = ["AD", "NL"] if constants.CLASSIFICATION == "binary" else ["AD", "MCI", "NL"]
+    reset_train_test_sets(labels)
     # Redistribute test and training sets for each label AD and NL
-    for label in ["AD", "NL"]:
+    for label in labels:
         # Get list of files in test and training directories
-        train_files = os.listdir(os.path.join(train_dir, label))
-        test_files = os.listdir(os.path.join(test_dir, label))
+        train_files = os.listdir(os.path.join(constants.TRAIN_DIR, label))
+        test_files = os.listdir(os.path.join(constants.TEST_DIR, label))
+        # Sorts files consistently so they're shuffled the same way based on the seed every time
+        train_files.sort()
+        test_files.sort()
 
         # Dictionary of dirs for each file
-        file_dict = {f: os.path.join(train_dir, label, f) for f in train_files}
-        test_dict = {f: os.path.join(test_dir, label, f) for f in test_files}
+        file_dict = {f: os.path.join(constants.TRAIN_DIR, label, f) for f in train_files}
+        test_dict = {f: os.path.join(constants.TEST_DIR, label, f) for f in test_files}
         # Merge dicts
         file_dict.update(test_dict)
 
@@ -69,7 +215,7 @@ def reshuffle_test_train_sets(seed):
         random.shuffle(all_files)
 
         # Save all_files to text file
-        with open(f"../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}/{seed}_files.csv", "w", encoding = 'utf-8') as f:
+        with open(f"../data/dataset/{constants.CLASSIFICATION}/{constants.SLICE_MODE}/{seed}_files.csv", "w", encoding = 'utf-8') as f:
             # Write headers
             f.write("set,file\n")
             for file_name in all_files:
@@ -82,120 +228,131 @@ def reshuffle_test_train_sets(seed):
 
         # Move test files to label directory in test folder
         for test_file in test_files:
-            shutil.move(file_dict[test_file], os.path.join(test_dir, label, test_file))
+            shutil.move(file_dict[test_file], os.path.join(constants.TEST_DIR, label, test_file))
 
         # Move train files to label directory in train folder
         for train_file in train_files:
-            shutil.move(file_dict[train_file], os.path.join(train_dir, label, train_file))
+            shutil.move(file_dict[train_file], os.path.join(constants.TRAIN_DIR, label, train_file))
     
-    file_dir = f"../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}"
-    # Count png files in all subdirectories of file_dir
-    png_count = 0
-    for _, _, files in os.walk(file_dir):
-        for file in files:
-            if file.endswith(".png"):
-                png_count += 1
-    print(f"[INFO] {png_count} png files in {file_dir}")
-    print(f"[INFO] Reshuffling complete (seed : {seed}) ")
+    count_dataset_files()
 
 
-def get_dataset_generators(train_dir, test_dir, seed):
+def print_generator_statistics(train_generator, val_generator, test_generator):
+    """ Prints statistics about the generators
+    Args:
+        train_generator (generator): training generator
+        val_generator (generator): validation generator
+        test_generator (generator): test generator
+    """
+    print(f"Classes in dataset: {train_generator.class_indices}")
+    train_distrib = np.bincount(train_generator.classes)
+    val_distrib = np.bincount(val_generator.classes)
+    test_distrib = np.bincount(test_generator.classes)
+    if constants.CLASSIFICATION == "binary":
+        print(f"{'Dataset':<10}{'AD':<10}{'NL':<10}")
+        print(f"{'Training':<10}{train_distrib[0]:<10}{train_distrib[1]:<10} = {sum(train_distrib)} data samples")
+        print(f"{'Val':<10}{val_distrib[0]:<10}{val_distrib[1]:<10} = {sum(val_distrib)} data samples")
+        print(f"{'Test':<10}{test_distrib[0]:<10}{test_distrib[1]:<10} = {sum(test_distrib)} data samples")
+        # Calculate totals for each label
+        ad_total = train_distrib[0] + val_distrib[0] + test_distrib[0]
+        nl_total = train_distrib[1] + val_distrib[1] + test_distrib[1]
+        print(f"{'Total':<10}{ad_total:<10}{nl_total:<10} = {ad_total + nl_total} data samples")
+    else:
+        print(f"{'Dataset':<10}{'AD':<10}{'MCI':<10}{'NL':<10}")
+        print(f"{'Train':<10}{train_distrib[0]:<10}{train_distrib[1]:<10}{train_distrib[2]:<10} = {sum(train_distrib)} data samples")
+        print(f"{'Val':<10}{val_distrib[0]:<10}{val_distrib[1]:<10}{val_distrib[2]:<10} = {sum(val_distrib)} data samples")
+        print(f"{'Test':<10}{test_distrib[0]:<10}{test_distrib[1]:<10}{test_distrib[2]:<10} = {sum(test_distrib)} data samples")
+        # Calculate totals for each label
+        ad_total = sum([train_distrib[0], val_distrib[0], test_distrib[0]])
+        mci_total = sum([train_distrib[1], val_distrib[1], test_distrib[1]])
+        nl_total = sum([train_distrib[2], val_distrib[2], test_distrib[2]])
+        total_sum = ad_total + mci_total + nl_total
+        print(f"{'Total':<10}{ad_total:<10}{mci_total:<10}{nl_total:<10} = {total_sum} data samples")
+    return
+
+
+def get_dataset_generators(seed = None, k = None, fold = None):
     """ Loads the training and testing datasets
     Args:
-        train_dir (str): path to training images
-        test_dir (str): path to testing images
+        constants.TRAIN_DIR (str): path to training images
+        constants.TEST_DIR (str): path to testing images
     """
-    reshuffle_test_train_sets(seed)
-
-    datagen_args = dict(
-        rotation_range = 5,
-        shear_range = 0.02,
-        zoom_range = 0.05,
-        samplewise_center = True,
-        samplewise_std_normalization = True,
-        width_shift_range = 0.2,
-        height_shift_range = 0.2,
-        rescale=1./255,
-        validation_split = 0.2
-    )
+    if seed is not None:
+        reshuffle_test_train_sets(seed)
+    elif k is not None and fold is not None:
+        reshuffle_test_train_kfold(fold, k)
+    else:
+        print("[INFO] No reshuffling of test and training sets")
+    
+    if constants.AUGMENTATION:
+        datagen_args = dict(
+            # rotation_range = 5,
+            shear_range = 0.02,
+            zoom_range = 0.05,
+            width_shift_range = 0.2,
+            height_shift_range = 0.2,
+            rescale=1./255,
+            validation_split = constants.VAL_SIZE
+        )
+    else:
+        datagen_args = dict(
+            rescale=1./255,
+            validation_split = constants.VAL_SIZE
+        )
 
     # Image augmentation on training set
     train_datagen = ImageDataGenerator(**datagen_args)
+    
     test_datagen = ImageDataGenerator(rescale=1./255)
+    # Dictates the label split mode
+    class_mode = "binary" if constants.CLASSIFICATION == "binary" else "sparse"
 
     train_generator = train_datagen.flow_from_directory(
-        train_dir,
-        target_size= IMAGE_SIZE,
-        batch_size = BATCH_SIZE,
-        class_mode = 'binary',
+        constants.TRAIN_DIR,
+        target_size= constants.IMAGE_SIZE,
+        batch_size = constants.BATCH_SIZE,
+        class_mode = class_mode,
         shuffle = True,
+        interpolation='lanczos',
         seed = seed,
         subset='training'
     )
 
     validation_generator = train_datagen.flow_from_directory(
-        train_dir,
-        target_size= IMAGE_SIZE,
-        batch_size = BATCH_SIZE,
-        class_mode = 'binary',
+        constants.TRAIN_DIR,
+        target_size= constants.IMAGE_SIZE,
+        batch_size = constants.BATCH_SIZE,
+        class_mode = class_mode,
         shuffle = True,
+        interpolation='lanczos',
         seed = seed,
         subset='validation'
     )
 
     test_generator = test_datagen.flow_from_directory(
-        test_dir,
-        target_size= IMAGE_SIZE,
-        batch_size = BATCH_SIZE,
-        class_mode = 'binary',
-        shuffle = False,
-        seed = seed
+        constants.TEST_DIR,
+        target_size= constants.IMAGE_SIZE,
+        batch_size = constants.BATCH_SIZE,
+        class_mode = class_mode,
+        shuffle = False
     )
 
-    print(f"Classes in dataset: {train_generator.class_indices}")
-    # Print distribution of classes in training set
-    print(f"Number of samples per class in training set: {int(train_generator.samples / len(train_generator.class_indices))}")
-
-
-    # class_mapping = {v:k for k,v in train_generator.class_indices.items()}
-    # show_grid(x, 1, 2,label_list=y, show_labels=True,figsize=(20,10),class_mapping = class_mapping)
-
+    print_generator_statistics(train_generator, validation_generator, test_generator)
     return train_generator, validation_generator, test_generator
-
-
-def save_training_history(history, guid):
-    """ Saves the training history to a csv file
-    Args:
-        history (dict): training history
-        guid (str): guid for the model
-    """
-    history = history.history
-    val_acc = str(round(np.mean(history['val_acc'])*100, 2)).replace('.', ',')
-    # Get average val_acc
-    guid = str(val_acc) + "_" + guid
-    # Save training history to csv
-    with open(f"../data/history/{guid}.csv", "w", encoding='utf-8', newline='') as f:
-        writer = csv.writer(f)
-        writer.writerow(["acc", "val_acc", "loss", "val_loss"])
-        for i in range(len(history["acc"])):
-            writer.writerow([
-                history["acc"][i], history["val_acc"][i],
-                history["loss"][i], history["val_loss"][i]
-            ])
 
 
 def create_model():
     """Creates an original/own Convolutional Neural Network model
     Returns:
-        model (keras.models.Sequential): CNN model
+        model (keras.Sequential): CNN model
     """
     print('[INFO] Creating model')
-    size = IMAGE_SIZE[0]
+    size = constants.IMAGE_SIZE[0]
 
-    model = models.Sequential()
+    model = Sequential()
     # Convolutional layer 1
     model.add(
-        layers.Conv2D(100, (3, 3),
+        Conv2D(100, (3, 3),
             activation='relu',
             kernel_initializer='he_normal',
             kernel_regularizer=l2_regularizer(l=0.01),
@@ -203,62 +360,136 @@ def create_model():
             input_shape=(size, size, 3)
         )
     )
-    model.add(layers.MaxPooling2D(pool_size=(2, 2), strides=2))
-    model.add(layers.Dropout(0.5))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+    model.add(Dropout(0.5))
 
     # Convolutional layer 2
     model.add(
-        layers.Conv2D(70, (3, 3),
+        Conv2D(70, (3, 3),
             activation='relu',
             kernel_regularizer=l2_regularizer(l=0.01)
         )
     )
-    model.add(layers.MaxPooling2D(pool_size=(2, 2), strides=2))
-    model.add(layers.Dropout(0.3))
+    model.add(MaxPooling2D(pool_size=(2, 2), strides=2))
+    model.add(Dropout(0.3))
 
     # Final convolutional layer
     model.add(
-        layers.Conv2D(50, (3, 3),
+        Conv2D(50, (3, 3),
             activation='relu'
         )
     )
-    model.add(layers.Flatten())
-    # model.add(layers.Dense(64, activation='relu'))
-    model.add(layers.Dense(1, activation="sigmoid"))
+    model.add(Flatten())
+    # model.add(Dense(64, activation='relu'))
+    
+    if constants.CLASSIFICATION == 'binary':
+        model.add(Dense(1, activation='sigmoid'))
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss="binary_crossentropy",
+            metrics=["acc"]
+        )
+        print("[INFO] Compiled!")
+    elif constants.CLASSIFICATION == 'multiclass':
+        model.add(Dense(3, activation='softmax'))
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss="sparse_categorical_crossentropy",
+            metrics=["sparse_categorical_accuracy"]
+        )
+        print("[INFO] Compiled!")
 
     model.summary()
+    return model
 
-    model.compile(
-        optimizer=optimizers.Adam(learning_rate=0.001),
-        loss="binary_crossentropy",
-        metrics=["acc"]
+
+def create_pretrained_model():
+    """
+    Train and test the pretrained DenseNet121
+
+    Args:
+        constants.TRAIN_DIR (str): Path to training directory
+        constants.TEST_DIR (str): Path to testing directory
+        seed (int): Random seed for reproducibility
+    """
+    print("[INFO]  Loading pretrained model")
+    
+    # Create pretrained model InceptionResNetV2
+    base_model = InceptionResNetV2(
+        include_top=False,
+        weights='imagenet',
+        input_shape=(constants.IMAGE_SIZE[0], constants.IMAGE_SIZE[1], 3)
     )
+
+    # Freeze all layers in the pretrained model
+    for layer in base_model.layers:
+        layer.trainable = False
+
+    # Add new layers
+    x = base_model.output
+    x = GlobalAveragePooling2D()(x)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(0.5)(x)
+    x = Dense(1024, activation='relu')(x)
+    x = Dropout(0.5)(x)
+    x = Dense(512, activation='relu')(x)
+    x = Dropout(0.5)(x)
+    if constants.CLASSIFICATION == "binary":
+        predictions = Dense(1, activation='sigmoid')(x)
+
+        model = Model(inputs=base_model.input, outputs=predictions)
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss="binary_crossentropy",
+            metrics=["acc"]
+        )
+    elif constants.CLASSIFICATION == "multiclass":
+        predictions = Dense(3, activation='softmax')(x)
+
+        # Create new model
+        model = Model(inputs=base_model.input, outputs=predictions)
+
+        # Compile model
+        model.compile(
+            optimizer=Adam(learning_rate=0.001),
+            loss="sparse_categorical_crossentropy",
+            metrics=["sparse_categorical_accuracy"]
+        )
+    print("[INFO] Compiled!")
 
     return model
 
 
-def train_model(model, train_generator, validation_generator, guid):
+def create_lstm_model():
+    """
+    Train and test the LSTM model
+    """
+    # TODO: Finish this function
+    print("[INFO]  Creating LSTM model")
+
+
+def train_model(model, train_generator, validation_generator, guid, model_type):
     """ Train own CNN model
     Args:
-        model (keras.models.Sequential): CNN model
+        model (keras.Sequential): CNN model
         train_generator (keras.preprocessing.image.ImageDataGenerator): training data generator
         validation_generator (keras.preprocessing.image.ImageDataGenerator): validation data generator
         epochs (int): Number of epochs to train for
         guid (str): Unique identifier for the model
     Returns:
-        model (keras.models.Sequential): trained CNN model
+        model (keras.Sequential): trained CNN model
         actual_epochs (int): Number of epochs model was actually trained for
     """
     # Initialise training callbacks
     callbacks_list = [
-        callbacks.ModelCheckpoint(
+        ModelCheckpoint(
             filepath=f"../models/{guid}_best.h5",
             monitor="val_loss",
             mode = 'min',
             save_best_only=True,
             save_weights_only=True
         ),
-        callbacks.EarlyStopping(
+        EarlyStopping(
             monitor ="val_loss",
             min_delta=0.001,
             mode='min',
@@ -267,49 +498,53 @@ def train_model(model, train_generator, validation_generator, guid):
             baseline = None,
             verbose = 1,
         ),
-        callbacks.ReduceLROnPlateau(
+        ReduceLROnPlateau(
             monitor = "val_loss",
             mode = "auto",
             factor = 0.3,
             patience = 2,
         ),
-        callbacks.TensorBoard(
+        TensorBoard(
             log_dir=f"../logs/{guid}"
         )
     ]
+    
+    class_weight = {0: 0.73, 1: 0.27} if constants.CLASSIFICATION == 'binary' else {0: 0.36, 1: 0.36, 2: 0.28}
 
-    print(f"[INFO] Training CNN model using {SLICE_MODE} slices")
-
+    print(f"[INFO] Training CNN model using {constants.SLICE_MODE} slices")
     history = model.fit(
         train_generator,
-        steps_per_epoch=train_generator.samples // BATCH_SIZE,
-        epochs=EPOCHS,
+        class_weight=class_weight,
+        steps_per_epoch=train_generator.samples // constants.BATCH_SIZE,
         validation_data=validation_generator,
-        validation_steps=validation_generator.samples // BATCH_SIZE,
+        validation_steps=validation_generator.samples // constants.BATCH_SIZE,
+        epochs=constants.EPOCHS,
         callbacks=callbacks_list,
         verbose=1,
     )
 
+    history = history.history
     # Save training history
     save_training_history(history, guid)
 
+    acc_metric = "acc" if constants.CLASSIFICATION == "binary" else "sparse_categorical_accuracy"
     # Plot training history
-    actual_epochs = len(history["acc"])
-    settings = {'epochs': EPOCHS, 'epochs_executed': actual_epochs, 'batch_size': BATCH_SIZE}
-    plot_history(history, guid, "own_models", generate_caption(settings))
+    actual_epochs = len(history[acc_metric])
+    settings = {'epochs': constants.EPOCHS, 'epochs_executed': actual_epochs, 'batch_size': constants.BATCH_SIZE}
+    plot_history(history, guid, model_type, constants.CLASSIFICATION, generate_caption(settings))
 
     # Save trained model
-    model.save(f"../models/{guid}.h5")
+    model.save(f"../models/{constants.CLASSIFICATION}/{guid}.h5")
 
     # Remove any model file with "best" in the name
-    for file in os.listdir(f"../models"):
+    for file in os.listdir("../models"):
         if "best" in file:
             os.remove(f"../models/{file}")
     
     return model, actual_epochs
 
 
-def train_and_test(train_dir, test_dir):
+def train_and_test(model_type):
     """ Trains and tests a CNN on the data
 
     Args:
@@ -321,49 +556,44 @@ def train_and_test(train_dir, test_dir):
     Returns:
         None
     """
-    cv = 5
-    
-    height = IMAGE_SIZE[0]
-    width = IMAGE_SIZE[1]
-
-    # Compute the mean and the variance of the training data for normalization.
-    accs = []
-    f1 = []
-    precision = []
-    recall = []
-
-    # Ensure the same random is generated each time
-    random.seed(42)
-    seeds = random.sample(range(1, 20), cv)
-    seeds.sort()
     guids = []
-    for seed in seeds:
-        reset_random_seeds(seed)
-        # get the training and testing data
-        train_gen, validation_gen, test_gen = get_dataset_generators(train_dir, test_dir, seed)
+    seeds = [1, 4, 8, 9, 19]
 
-        guid = f"{EPOCHS}_{BATCH_SIZE}_{SLICE_MODE}_{IMAGE_SIZE[0]}_{seed}"
+    for fold, seed in enumerate(seeds):
+        reset_random_seeds(seed)
+
+        # Get training / testing data
+        # train_gen, validation_gen, test_gen = get_dataset_generators(seed = seed)
+        train_gen, validation_gen, test_gen = get_dataset_generators(fold = fold, k = len(seeds))
+
+        guid = f"{constants.EPOCHS}_{constants.BATCH_SIZE}_{constants.SLICE_MODE}_{constants.IMAGE_SIZE[0]}_{seed}"
         guids.append(guid)
-        # Load training_log.csv into pandas dataframe
-        train_log = pd.read_csv("../models/training_log.csv")
         
         # Declare blank model
         model = None
 
         # Get all models from models folder
-        models = [f for f in os.listdir("../models") if f.endswith(".h5")]
+        models = [f for f in os.listdir(f"../models/{constants.CLASSIFICATION}") if f.endswith(".h5")]
         # Filter models where guid in model
         models = [f for f in models if guid in f]
-        if len(models) == 1 and not RETRAIN:
+
+        # If only one model is found and we don't want to retrain a model with the same settings
+        if len(models) == 1 and not constants.RETRAIN:
             # Load model from models folder
             model = models.load_model(models[0])
             print(f"[INFO] Model {models[0]} loaded")
 
         if model is None:
             # ! 1 Create model
-            model = create_model()
+            if model_type == "own_models":
+                model = create_model()
+            elif model_type == "transfer_models":
+                model = create_pretrained_model()
+            else:
+                print("[ERROR] Invalid model type")
+                return
             # ! 2 Train model
-            model, actual_epochs = train_model(model, train_gen, validation_gen, guid)
+            model, actual_epochs = train_model(model, train_gen, validation_gen, guid, model_type)
 
         score = model.evaluate(test_gen, verbose=0)
 
@@ -373,43 +603,52 @@ def train_and_test(train_dir, test_dir):
 
         # Predict labels for test data
         test_predictions = model.predict(test_gen)
-        test_label = utils.to_categorical(test_gen.classes, 2)
 
-        true_label = np.argmax(test_label, axis=1)
+        test_label = to_categorical(test_gen.classes, len(test_gen.class_indices))
 
-        # Round test predictions to nearest integer
-        predicted_label = np.round(test_predictions)
+        actual = np.argmax(test_label, axis=1)
 
-        class_report = classification_report(
-            true_label,
-            predicted_label,
-            output_dict=True,
-            zero_division=0
-        )
+        # Round test predictions to nearest integer and select max value
+        pred = np.argmax(test_predictions, axis=1)
         
+        class_report = classification_report(
+            actual,
+            pred,
+            output_dict=True
+        )
+
+        cm = confusion_matrix(actual, pred)
+        plot_cm(cm, list(test_gen.class_indices.keys()), f"Confusion Matrix : {constants.CLASSIFICATION}", guid, constants.CLASSIFICATION)
+
+        # Load training_log.csv into pandas dataframe        
+        train_log = pd.read_csv("../models/training_log.csv")
+        # Filter model_type 
+        train_log = train_log[train_log["model_type"] == model_type]
         # ! Append results to training_log csv
-        # if guid is not in guid column, write to training_log.csv
-        if guid not in train_log["guid"].values:
-            # Append guid to csv file with stats
-            with open("../models/training_log.csv", "a", encoding='utf-8', newline='') as f:
-                writer = csv.writer(f)
-                # If guid exists in csv, skip writing to csv
-                writer.writerow([guid,
+        # Append guid to csv file with stats
+        with open("../models/training_log.csv", "a", encoding='utf-8', newline='') as f:
+            writer = csv.writer(f)
+            # If guid exists in csv, skip writing to csv
+            writer.writerow([constants.CLASSIFICATION,
+                                    model_type,
+                                    guid,
                                     seed,
-                                    EPOCHS,
+                                    constants.EPOCHS,
                                     actual_epochs,
-                                    BATCH_SIZE,
-                                    SLICE_MODE,
-                                    height,
-                                    width,
+                                    constants.BATCH_SIZE,
+                                    constants.SLICE_MODE,
+                                    constants.IMAGE_SIZE[0],
+                                    constants.IMAGE_SIZE[1],
                                     acc,
                                     class_report["macro avg"]["precision"],
                                     class_report["macro avg"]["recall"],
                                     class_report["macro avg"]["f1-score"],
                                     loss,
-                                    TEST_SIZE,
-                                    VAL_SIZE,
-                                    False
+                                    constants.TEST_SIZE,
+                                    constants.VAL_SIZE,
+                                    False,
+                                    int(time.time()),
+                                    constants.AUGMENTATION
                                 ])
 
     # Get accs from training_log.csv
@@ -438,26 +677,30 @@ def train_and_test(train_dir, test_dir):
     # ! Record average stats for the trained models
     with open("../models/training_log.csv", "a", encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
-            writer.writerow([f"own_model_cv_{cv}",
+            writer.writerow([constants.CLASSIFICATION,
+                            model_type,
+                            f"{model_type}_cv_{constants.CV}",
                             "",
-                            EPOCHS,
+                            constants.EPOCHS,
                             "",
-                            BATCH_SIZE,
-                            SLICE_MODE,
-                            height,
-                            width,
+                            constants.BATCH_SIZE,
+                            constants.SLICE_MODE,
+                            constants.IMAGE_SIZE[0],
+                            constants.IMAGE_SIZE[1],
                             avg_acc,
                             avg_precision,
                             avg_recall,
                             avg_f1,
                             "",
-                            TEST_SIZE,
-                            VAL_SIZE,
-                            True
+                            constants.TEST_SIZE,
+                            constants.VAL_SIZE,
+                            True,
+                            int(time.time()),
+                            constants.AUGMENTATION
                         ])
 
     # Print statistics
-    print(f"{'Type':<10} {'Metric':<10} {'Standard Deviation':<10}")
+    print(f"{'Type':<10} {'Metric':<10} {'Value':<10}")
     print(f"{'Average':<10}{'Accuracy':<10} {avg_acc:<10}")
     print(f"{'Average':<10}{'Precision':<10} {avg_precision:<10}")
     print(f"{'Average':<10}{'Recall':<10} {avg_recall:<10}")
@@ -468,90 +711,32 @@ def train_and_test(train_dir, test_dir):
     print(f"{'STD':<10} {'F1':<10} {std_f1:<10}")
 
 
-def create_pretrained_model(train_dir, test_dir, seed):
-    """
-    Train and test the pretrained DenseNet121
-
-    Args:
-        train_dir (str): Path to training directory
-        test_dir (str): Path to testing directory
-        seed (int): Random seed for reproducibility
-    """
-    print("[INFO]  Loading DenseNet121")
-    # Load pretrained model
-    base_model = DenseNet121(
-        weights='imagenet',
-        include_top=False,
-        input_shape=(IMAGE_SIZE[0], IMAGE_SIZE[1], 3)
-    )
-    x = base_model.output
-
-    x = GlobalAveragePooling2D()(x)
-    predictions = layers.Dense(1, activation="sigmoid")(x)
-    # Stitch model together
-    model = Model(inputs=base_model.input, outputs=predictions)
-
-    model.compile(
-        loss="binary_crossentropy",
-        optimizer=optimizers.Adam(learning_rate=0.001),
-        metrics=["acc"]
-    )
-
-    return model
-
-
-def create_lstm_model():
-    """
-    Train and test the LSTM model
-    """
-    # TODO: Finish this function
-    print("[INFO]  Training and testing LSTM model")
-    # Load data
-    train_data, test_data, train_labels, test_labels = load_data()
-    # Create LSTM model and train
-    pass
-
-
 def prepare_log_files():
     """ Prepare files for training and testing """
+    if not os.path.exists(f"../data/history/{constants.CLASSIFICATION}"):
+        os.makedirs(f"../data/history/{constants.CLASSIFICATION}")
+
     # If training_log.csv exists, delete it
     if not os.path.exists("../models/training_log.csv"):
         print("[INFO]  Creating training_log.csv")
-        training_log_headers = "guid,seed,epochs,actual_epochs,batch_size,SLICE_MODE,height,width,acc,precision,recall,f1,loss,TEST_SIZE,VAL_SIZE,individual"
+        training_log_headers = "classification,model_type,guid,seed,epochs,actual_epochs,batch_size,constants.SLICE_MODE,height,width,acc,precision,recall,f1,loss,constants.TEST_SIZE,constants.VAL_SIZE,individual,time"
         with open("../models/training_log.csv", "w", encoding='utf-8', newline='') as f:
             writer = csv.writer(f)
             writer.writerow(training_log_headers.split(","))
 
 
-def image_data_classification(im, sm, ts = 0.1, vs = 0.2):
+def main(image_size = None, slice_mode = None, batch_size = None, epochs = None, test_size = None, val_size = None, cv = None):
     """Image data classification"""
-    global IMAGE_SIZE
-    global SLICE_MODE
-    global TEST_SIZE
-    global VAL_SIZE
-    global EPOCHS
-    global BATCH_SIZE
-    global RETRAIN
-
-    IMAGE_SIZE = im
-    SLICE_MODE = sm
-    TEST_SIZE = ts
-    VAL_SIZE = vs
-    EPOCHS = 50
-    BATCH_SIZE = 32
-    RETRAIN = False
-
     prepare_log_files()
-    print("")
     print("[INFO] Image data classification")
 
-    # Train directory
-    train_dir = f'../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}/train'
-    test_dir = f'../data/dataset/{SLICE_MODE}_{IMAGE_SIZE[0]}/test'
-
     # ! Train and test own CNN model
-    train_and_test(train_dir, test_dir)
+    train_and_test("transfer_models")
     # ! Train and test pre-trained CNN model (ResNET50)
-    # train_and_test_pretrained(train_dir, test_dir, 42)
+    # train_and_test_pretrained(constants.TRAIN_DIR, constants.TEST_DIR, 42)
     # ! Train and test model with self-attention layer
-    # train_and_test_attention(train_data, test_data, train_labels, test_labels)
+    # train_and_test_attention(train_data, test_data, train_labels, test_labels)s
+
+
+if __name__ == "__main__":
+    main()

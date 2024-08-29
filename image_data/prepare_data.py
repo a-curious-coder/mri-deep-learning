@@ -11,7 +11,7 @@ from skimage.transform import resize
 from sklearn.model_selection import train_test_split
 
 import image_data.constants as constants
-from plot import *
+from utils.plot import *
 
 
 def normalise_data(data):

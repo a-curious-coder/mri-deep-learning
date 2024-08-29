@@ -13,7 +13,7 @@ import time
 
 from image_data.prepare_data import prepare_data
 from image_data.train_test_models import main as image_data_classification
-from misc import cls, prepare_dir_structure, print_time_left, print_title
+from utils.misc import cls, prepare_dir_structure, print_time_left, print_title
 from tabular_data.tabular_data import main as tmain
 import image_data.constants as constants
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

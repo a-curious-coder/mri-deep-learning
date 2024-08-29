@@ -8,25 +8,25 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 import tensorflow
-from keras import Input
-from keras.applications.densenet import DenseNet121
-from keras.applications.vgg16 import VGG16
-from keras.applications.inception_resnet_v2 import InceptionResNetV2
-from keras.callbacks import (EarlyStopping, ModelCheckpoint,
+from tensorflow.keras import Input
+from tensorflow.keras.applications.densenet import DenseNet121
+from tensorflow.keras.applications.vgg16 import VGG16
+from tensorflow.keras.applications.inception_resnet_v2 import InceptionResNetV2
+from tensorflow.keras.callbacks import (EarlyStopping, ModelCheckpoint,
                                         ReduceLROnPlateau, TensorBoard)
-from keras.constraints import unit_norm
-from keras.layers import (Conv2D, Dense, Dropout, Flatten,
+from tensorflow.keras.constraints import unit_norm
+from tensorflow.keras.layers import (Conv2D, Dense, Dropout, Flatten,
                                      MaxPooling2D, GlobalAveragePooling2D)
-from keras.models import Model, Sequential
+from tensorflow.keras.models import Model, Sequential
 from tensorflow.keras.optimizers import Adam
-from keras.preprocessing.image import ImageDataGenerator
-from keras.regularizers import l2 as l2_regularizer
+from tensorflow.keras.preprocessing.image import ImageDataGenerator
+from tensorflow.keras.regularizers import l2 as l2_regularizer
 from tensorflow.keras.utils import to_categorical
 
 import image_data.constants as constants
-from plot import generate_caption, plot_cm, plot_history
+from utils.plot import generate_caption, plot_cm, plot_history
 
-from keras.utils.data_utils import Sequence
+from tensorflow.keras.utils import Sequence
 from imblearn.over_sampling import RandomOverSampler
 from imblearn.keras import balanced_batch_generator
 

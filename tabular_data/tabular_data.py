@@ -18,7 +18,7 @@ from sklearn.svm import SVC
 from sklearn.tree import DecisionTreeClassifier
 from tensorflow.keras import layers, models
 import seaborn as sns
-from plot import *
+from utils.plot import *
 
 from tabular_data.model import *
 

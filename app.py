@@ -6,7 +6,7 @@ from image_data.train_test_models import main as image_data_classification
 from tabular_data.tabular_data import main as tmain
 import image_data.constants as constants
 
-app = Flask(__name__, static_folder='data')
+app = Flask(__name__)
 
 @app.route('/')
 def index():
@@ -45,6 +45,10 @@ def update_settings():
 @app.route('/static/data/raw/<path:filename>')
 def serve_nifti(filename):
     return send_from_directory('data/raw', filename)
+
+@app.route('/data/<path:filename>')
+def serve_data(filename):
+    return send_from_directory('data', filename)
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -1,0 +1,519 @@
+<script>
+        function toggleDarkMode() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light');
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            }
+        }
+
+        // Function to set initial theme
+        function setInitialTheme() {
+            if (localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        }
+
+        // Call setInitialTheme immediately
+        setInitialTheme();
+
+        // Also call it when the DOM is fully loaded
+        document.addEventListener('DOMContentLoaded', setInitialTheme);
+
+        async function updateSettings() {
+            const settings = {
+                image_size: document.getElementById('image_size').value,
+                slice_mode: document.getElementById('slice_mode').value,
+                test_size: document.getElementById('test_size').value,
+                val_size: document.getElementById('val_size').value,
+            };
+
+            const response = await fetch('/update_settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(settings),
+            });
+
+            if (response.ok) {
+                alert('Settings updated successfully');
+            } else {
+                alert('Failed to update settings');
+            }
+        }
+
+        let scene, camera, renderer, niftiImage, niftiHeader;
+        let axialPlane, sagittalPlane, coronalPlane;
+        let axialLine, sagittalLine, coronalLine;
+        let controls;
+
+        // Update the initMRIViewer function
+        function initMRIViewer() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            renderer.setSize(400, 400);
+            document.getElementById('mri-viewer').innerHTML = '';
+            document.getElementById('mri-viewer').appendChild(renderer.domElement);
+
+            // Move camera further back
+            camera.position.set(2, 2, 2);
+            camera.lookAt(0, 0, 0);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.25;
+            controls.enableZoom = true;
+  
+            // Create planes with default size of 1x1
+            const planeGeometry = new THREE.PlaneGeometry(1, 1);
+            const planeMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0 });
+            
+            axialPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
+            sagittalPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
+            coronalPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
+
+            axialPlane.rotation.x = Math.PI / 2;
+            sagittalPlane.rotation.y = Math.PI / 2;
+
+            scene.add(axialPlane);
+            scene.add(sagittalPlane);
+            scene.add(coronalPlane);
+
+            // Initialize plane positions
+            updatePlanePositions(0, 0, 0);
+
+            // Create colored lines
+            const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
+            const points = [];
+            points.push(new THREE.Vector3(-0.5, 0, 0));
+            points.push(new THREE.Vector3(0.5, 0, 0));
+            const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+
+            axialLine = new THREE.Line(lineGeometry, lineMaterial);
+            sagittalLine = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
+            coronalLine = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: 0x0000ff }));
+
+            axialLine.rotation.x = Math.PI / 2;
+            sagittalLine.rotation.y = Math.PI / 2;
+
+            scene.add(axialLine);
+            scene.add(sagittalLine);
+            scene.add(coronalLine);
+
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        function updateSlices(axialValue, sagittalValue, coronalValue) {
+            if (!niftiImage || !axialPlane || !sagittalPlane || !coronalPlane) return;
+
+            const normalizedAxial = axialValue / 100;
+            const normalizedSagittal = sagittalValue / 100;
+            const normalizedCoronal = coronalValue / 100;
+
+            updatePlanePositions(normalizedAxial, normalizedSagittal, normalizedCoronal);
+
+            updatePlaneTexture(axialPlane, axialValue, 'axial');
+            updatePlaneTexture(sagittalPlane, sagittalValue, 'sagittal');
+            updatePlaneTexture(coronalPlane, coronalValue, 'coronal');
+        }
+
+        function updatePlanePositions(axialValue, sagittalValue, coronalValue) {
+            axialPlane.position.y = (axialValue - 0.5);
+            sagittalPlane.position.x = (sagittalValue - 0.5);
+            coronalPlane.position.z = (coronalValue - 0.5);
+        }
+
+        /**
+         * Updates the texture of a given plane with slice data from the NIfTI image.
+         * @param {THREE.Mesh} plane - The plane to update.
+         * @param {number} sliceIndex - The index of the slice (0-100).
+         * @param {string} orientation - The orientation of the plane ('axial', 'sagittal', or 'coronal').
+         */
+        function updatePlaneTexture(plane, sliceIndex, orientation) {
+            const sliceData = extractSliceData(sliceIndex, orientation);
+            const normalizedData = normalizeSliceData(sliceData);
+            const texture = createTextureFromData(normalizedData, sliceData.width, sliceData.height);
+            updatePlaneMaterial(plane, texture);
+            adjustPlaneScale(plane, sliceData.width, sliceData.height);
+            adjustPlanePosition(plane, sliceIndex, orientation);
+            // logSliceStatistics(sliceData, orientation);
+        }
+
+        /**
+         * Extracts slice data from the NIfTI image for a given orientation.
+         * @param {number} sliceIndex - The index of the slice (0-100).
+         * @param {string} orientation - The orientation of the slice ('axial', 'sagittal', or 'coronal').
+         * @returns {Object} An object containing the slice data, width, and height.
+         */
+        function extractSliceData(sliceIndex, orientation) {
+            const dims = niftiHeader.dims;
+            const imageData = new Uint16Array(niftiImage);
+            let width, height, sliceData;
+
+            switch (orientation) {
+                case 'axial':
+                    width = dims[1];
+                    height = dims[2];
+                    sliceData = extractAxialSlice(imageData, dims, sliceIndex, width, height);
+                    break;
+                case 'sagittal':
+                    width = dims[2];
+                    height = dims[3];
+                    sliceData = extractSagittalSlice(imageData, dims, sliceIndex, width, height);
+                    break;
+                case 'coronal':
+                    width = dims[1];
+                    height = dims[3];
+                    sliceData = extractCoronalSlice(imageData, dims, sliceIndex, width, height);
+                    break;
+            }
+
+            return { data: sliceData, width, height };
+        }
+
+        /**
+         * Extracts an axial slice from the image data.
+         */
+        function extractAxialSlice(imageData, dims, sliceIndex, width, height) {
+            const sliceData = new Uint16Array(width * height);
+            const z = Math.floor(sliceIndex / 100 * (dims[3] - 1));
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    sliceData[y * width + x] = imageData[z * width * height + y * width + x];
+                }
+            }
+            return sliceData;
+        }
+
+        /**
+         * Extracts a sagittal slice from the image data.
+         */
+        function extractSagittalSlice(imageData, dims, sliceIndex, width, height) {
+            let sliceData = new Uint16Array(width * height);
+            const x = Math.floor(sliceIndex / 100 * (dims[1] - 1));
+            for (let z = 0; z < height; z++) {
+                for (let y = 0; y < width; y++) {
+                    // Flip z-axis to correct the orientation
+                    sliceData[(height - 1 - z) * width + y] = imageData[(height - 1 - z) * dims[1] * dims[2] + y * dims[1] + x];
+                }
+            }
+            // Mirror the slice data horizontally
+            let mirroredSliceData = new Uint16Array(width * height);
+            for (let z = 0; z < height; z++) {
+                for (let y = 0; y < width; y++) {
+                    mirroredSliceData[z * width + (width - 1 - y)] = sliceData[z * width + y];
+                }
+            }
+            sliceData = mirroredSliceData;
+            return sliceData;
+        }
+
+        /**
+         * Extracts a coronal slice from the image data.
+         */
+        function extractCoronalSlice(imageData, dims, sliceIndex, width, height) {
+            const sliceData = new Uint16Array(width * height);
+            const y = Math.floor(sliceIndex / 100 * (dims[2] - 1));
+            for (let z = 0; z < height; z++) {
+                for (let x = 0; x < width; x++) {
+                    sliceData[z * width + x] = imageData[z * dims[1] * dims[2] + y * dims[1] + x];
+                }
+            }
+            return sliceData;
+        }
+
+        /**
+         * Normalizes the slice data to 0-255 range.
+         * @param {Object} sliceData - An object containing the slice data, width, and height.
+         * @returns {Uint8Array} Normalized RGBA data.
+         */
+        function normalizeSliceData(sliceData) {
+            const min = Math.min(...sliceData.data);
+            const max = Math.max(...sliceData.data);
+            const range = max - min;
+
+            const normalizedData = new Uint8Array(sliceData.width * sliceData.height * 4);
+            for (let i = 0; i < sliceData.data.length; i++) {
+                const normalizedValue = Math.round(((sliceData.data[i] - min) / range) * 255);
+                normalizedData[i * 4] = normalizedValue;     // Red channel
+                normalizedData[i * 4 + 1] = normalizedValue; // Green channel
+                normalizedData[i * 4 + 2] = normalizedValue; // Blue channel
+                normalizedData[i * 4 + 3] = 255;             // Alpha channel (fully opaque)
+            }
+
+            return normalizedData;
+        }
+
+        /**
+         * Creates a THREE.DataTexture from normalized data.
+         * @param {Uint8Array} normalizedData - Normalized RGBA data.
+         * @param {number} width - The width of the texture.
+         * @param {number} height - The height of the texture.
+         * @returns {THREE.DataTexture} The created texture.
+         */
+        function createTextureFromData(normalizedData, width, height) {
+            const texture = new THREE.DataTexture(normalizedData, width, height, THREE.RGBAFormat);
+            texture.needsUpdate = true;
+            return texture;
+        }
+
+        /**
+         * Updates the material of a plane with a new texture.
+         * @param {THREE.Mesh} plane - The plane to update.
+         * @param {THREE.DataTexture} texture - The new texture.
+         */
+         function updatePlaneMaterial(plane, texture) {
+            plane.material = new THREE.MeshBasicMaterial({
+                map: texture,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 1  // Increase opacity to make slices fully visible
+            });
+        }
+
+        /**
+         * Adjusts the scale of a plane to match the aspect ratio of the slice.
+         * @param {THREE.Mesh} plane - The plane to adjust.
+         * @param {number} width - The width of the slice.
+         * @param {number} height - The height of the slice.
+         */
+        function adjustPlaneScale(plane, width, height) {
+            const maxDim = Math.max(width, height);
+            plane.scale.set(width / maxDim, height / maxDim, 1);
+        }
+
+        /**
+         * Adjusts the position of a plane based on the slice index.
+         * @param {THREE.Mesh} plane - The plane to adjust.
+         * @param {number} sliceIndex - The index of the slice (0-100).
+         * @param {string} orientation - The orientation of the plane.
+         */
+        function adjustPlanePosition(plane, sliceIndex, orientation) {
+            const dims = niftiHeader.dims;
+            const maxDim = Math.max(dims[1], dims[2], dims[3]);
+            const normalizedIndex = sliceIndex / 100 - 0.5;
+
+            switch (orientation) {
+                case 'axial':
+                    plane.position.y = normalizedIndex * dims[3] / maxDim;
+                    break;
+                case 'sagittal':
+                    plane.position.x = normalizedIndex * dims[1] / maxDim;
+                    break;
+                case 'coronal':
+                    plane.position.z = normalizedIndex * dims[2] / maxDim;
+                    break;
+            }
+        }
+
+        /**
+         * Logs statistics about the slice data.
+         * @param {Object} sliceData - An object containing the slice data, width, and height.
+         * @param {string} orientation - The orientation of the slice.
+         */
+        function logSliceStatistics(sliceData, orientation) {
+            console.log(`${orientation} plane statistics:`, {
+                min: Math.min(...sliceData.data),
+                max: Math.max(...sliceData.data),
+                range: Math.max(...sliceData.data) - Math.min(...sliceData.data),
+                width: sliceData.width,
+                height: sliceData.height
+            });
+        }
+
+        let isImageLoaded = false;
+
+        function handleFileUpload(event) {
+            if (isImageLoaded) return; // Prevent upload if image is already loaded
+            const file = event.target.files ? event.target.files[0] : event.dataTransfer.files[0];
+            if (file && file.name.endsWith('.nii')) {
+                document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${file.name}`;
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const arrayBuffer = e.target.result;
+                    niftiHeader = nifti.readHeader(arrayBuffer);
+                    niftiImage = nifti.readImage(niftiHeader, arrayBuffer);
+                    
+                    console.log('NIfTI header loaded:', niftiHeader);
+                    console.log('NIfTI image loaded:', niftiImage);
+                    console.log('Image dimensions:', niftiHeader.dims.slice(1, 4));
+                    console.log('Data type:', niftiHeader.datatypeCode);
+                    console.log('Voxel dimensions:', niftiHeader.pixDims.slice(1, 4));
+                    
+                    // Initialize the viewer with the middle slices
+                    const midAxial = Math.floor(niftiHeader.dims[3] / 2);
+                    const midSagittal = Math.floor(niftiHeader.dims[1] / 2);
+                    const midCoronal = Math.floor(niftiHeader.dims[2] / 2);
+                    
+                    // Reinitialize the MRI viewer
+                    initMRIViewer();
+                    
+                    updateSlices(
+                        (midAxial / niftiHeader.dims[3]) * 100,
+                        (midSagittal / niftiHeader.dims[1]) * 100,
+                        (midCoronal / niftiHeader.dims[2]) * 100
+                    );
+                    
+                    // Update slider ranges
+                    document.getElementById('axial-slider').max = niftiHeader.dims[3] - 1;
+                    document.getElementById('sagittal-slider').max = niftiHeader.dims[1] - 1;
+                    document.getElementById('coronal-slider').max = niftiHeader.dims[2] - 1;
+                    
+                    isImageLoaded = true;
+                    updateUploadState();
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                alert('Please upload a valid .nii file');
+            }
+        }
+
+        function clearImage() {
+            // Clear the MRI viewer
+            document.getElementById('mri-viewer').innerHTML = '<p class="text-center text-light-green-800 dark:text-gray-300">Drag and drop a .nii file here<br>or click to select</p>';
+            isImageLoaded = false;
+            updateUploadState();
+            
+            // Reset the viewer title
+            document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer';
+            
+            // Clear the niftiImage and niftiHeader
+            niftiImage = null;
+            niftiHeader = null;
+            
+            // Reset the sliders
+            document.getElementById('axial-slider').value = 50;
+            document.getElementById('sagittal-slider').value = 50;
+            document.getElementById('coronal-slider').value = 50;
+            
+            // Reset the Three.js scene
+            if (scene) {
+                while(scene.children.length > 0){ 
+                    scene.remove(scene.children[0]); 
+                }
+            }
+            if (renderer) {
+                renderer.dispose();
+            }
+            scene = null;
+            camera = null;
+            renderer = null;
+            controls = null;
+        }
+
+        function updateUploadState() {
+            const dropZone = document.getElementById('mri-viewer');
+            const clearButton = document.getElementById('clear-button');
+            if (isImageLoaded) {
+                dropZone.removeEventListener('click', triggerFileInput);
+                dropZone.classList.remove('cursor-pointer');
+                clearButton.classList.remove('hidden');
+            } else {
+                dropZone.addEventListener('click', triggerFileInput);
+                dropZone.classList.add('cursor-pointer');
+                clearButton.classList.add('hidden');
+            }
+        }
+
+        function triggerFileInput() {
+            document.getElementById('file-input').click();
+        }
+
+        // Check if the example.nii file exists
+        fetch('/static/data/raw/example.nii')
+            .then(response => {
+                if (response.ok) {
+                    console.log('example.nii file exists');
+                    // Load the file automatically
+                    loadExampleFile();
+                } else {
+                    console.log('example.nii file does not exist');
+                    updateUploadState();
+                }
+            })
+            .catch(error => {
+                console.error('Error checking for example.nii:', error);
+                updateUploadState();
+            });
+
+        function loadExampleFile() {
+            fetch('/static/data/raw/example.nii')
+                .then(response => response.arrayBuffer())
+                .then(arrayBuffer => {
+                    niftiHeader = nifti.readHeader(arrayBuffer);
+                    niftiImage = nifti.readImage(niftiHeader, arrayBuffer);
+                    
+                    console.log('NIfTI header:', niftiHeader);
+                    console.log('NIfTI image data:', niftiImage);
+                    console.log('Image dimensions:', niftiHeader.dims.slice(1, 4));
+                    console.log('Data type:', niftiHeader.datatypeCode);
+                    console.log('Voxel dimensions:', niftiHeader.pixDims.slice(1, 4));
+
+                    updateSlices(50, 50, 50);
+                    
+                    // Set isImageLoaded to true and update the upload state
+                    isImageLoaded = true;
+                    updateUploadState();
+                    
+                    // Update the viewer title
+                    document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii';
+                })
+                .catch(error => console.error('Error loading example.nii:', error));
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initMRIViewer();
+
+            const dropZone = document.getElementById('mri-viewer');
+            const fileInput = document.getElementById('file-input');
+
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!isImageLoaded) {
+                    this.classList.add('bg-light-green-300', 'dark:bg-gray-600');
+                }
+            });
+
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+            });
+
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+                if (!isImageLoaded) {
+                    handleFileUpload(e);
+                }
+            });
+
+            fileInput.addEventListener('change', handleFileUpload);
+
+            // Add event listeners for sliders
+            document.getElementById('axial-slider').addEventListener('input', function() {
+                updateSlices(this.value, document.getElementById('sagittal-slider').value, document.getElementById('coronal-slider').value);
+            });
+            document.getElementById('sagittal-slider').addEventListener('input', function() {
+                updateSlices(document.getElementById('axial-slider').value, this.value, document.getElementById('coronal-slider').value);
+            });
+            document.getElementById('coronal-slider').addEventListener('input', function() {
+                updateSlices(document.getElementById('axial-slider').value, document.getElementById('sagittal-slider').value, this.value);
+            });
+        });
+    </script>

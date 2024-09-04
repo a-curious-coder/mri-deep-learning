@@ -1,8 +1,11 @@
 import { setInitialTheme } from './theme.js';
 import { updateSettings } from './settings.js';
-import { initMRIViewer, updateSlices, clearImage, loadNiftiImage } from './mriViewer.js';
+import { updateSlices, clearImage, loadNiftiImage } from './mriViewer.js';
+import { initMRIViewer, updateCanvasSize, animate } from './mriViewer.js';
 
 let isImageLoaded = false;
+let containerWidth = 800;
+let containerHeight = 500;
 
 // File handling functions
 function handleFileUpload(event) {
@@ -70,8 +73,6 @@ function loadExampleFile() {
             
             console.log('NIfTI info:', niftiInfo);
 
-            updateSlices(50, 50, 50);
-            
             // Set isImageLoaded to true and update the upload state
             isImageLoaded = true;
             updateUploadState();
@@ -97,7 +98,8 @@ function handleClearImage() {
 document.addEventListener('DOMContentLoaded', function() {
     setInitialTheme();
     
-    // Don't initialize MRI viewer here, do it only when an image is loaded
+    // Initialize MRI viewer
+    initMRIViewer();
 
     const dropZone = document.getElementById('mri-viewer');
     const fileInput = document.getElementById('file-input');
@@ -140,9 +142,27 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('coronal-slider').addEventListener('input', function() {
         updateSlices(parseInt(document.getElementById('axial-slider').value), parseInt(document.getElementById('sagittal-slider').value), parseInt(this.value));
     });
+
+    // Add event listener for the Apply Canvas Size button
+    document.querySelector('button[onclick="applyCanvasSize()"]').addEventListener('click', applyCanvasSize);
 });
 
 // Export functions for use in HTML
 window.handleFileUpload = handleFileUpload;
 window.handleClearImage = handleClearImage;
 window.updateSettings = updateSettings;
+
+initMRIViewer();
+animate();
+
+// Update the applyCanvasSize function
+function applyCanvasSize() {
+    const width = parseInt(document.getElementById('canvas-width').value);
+    const height = parseInt(document.getElementById('canvas-height').value);
+    
+    // Update the canvas size
+    updateCanvasSize(width, height);
+}
+
+// Make the function globally accessible
+window.applyCanvasSize = applyCanvasSize;

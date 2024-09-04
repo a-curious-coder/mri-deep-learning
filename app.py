@@ -1,16 +1,17 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, send_from_directory
+from flask import Flask, render_template, request, jsonify, send_from_directory
 import os
-import sys
 from image_data.prepare_data import prepare_data
 from image_data.train_test_models import main as image_data_classification
-from tabular_data.tabular_data import main as tmain
+from tabular_data.tabular_data import main as tabular_data_main
 import image_data.constants as constants
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 app = Flask(__name__)
 
 @app.route('/')
 def index():
-    return render_template('index.html', 
+    return render_template('index.html',
                            image_size=constants.IMAGE_SIZE,
                            slice_mode=constants.SLICE_MODE,
                            test_size=constants.TEST_SIZE,
@@ -25,13 +26,13 @@ def run():
         image_data_classification()
         return "Image data processing complete"
     elif action == 'tabular':
-        tmain()
+        tabular_data_main()
         return "Tabular data processing complete"
     elif action == 'prepare':
         prepare_data()
         return "Data preparation complete"
     else:
-        return "Invalid action"
+        return "Invalid action", 400
 
 @app.route('/update_settings', methods=['POST'])
 def update_settings():

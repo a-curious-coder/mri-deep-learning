@@ -4,76 +4,111 @@ let axialLine, sagittalLine, coronalLine;
 let controls;
 
 export function initMRIViewer() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000);
-    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
-    renderer.setSize(400, 400);
-    document.getElementById('mri-viewer').innerHTML = '';
-    document.getElementById('mri-viewer').appendChild(renderer.domElement);
+    // Get the container dimensions
+    const container = document.getElementById('mri-viewer');
+    const containerWidth = container.clientWidth;
+    const containerHeight = container.clientHeight;
 
+    // Scene setup
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+    renderer.setSize(containerWidth, containerHeight);
+
+    // Clear and append renderer to DOM
+    container.innerHTML = '';
+    container.appendChild(renderer.domElement);
+
+    // Camera positioning
     camera.position.set(1.5, 1.5, 1.5);
     camera.lookAt(0, 0, 0);
 
+    // Controls setup
     controls = new THREE.OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.enableZoom = true;
 
-    const planeGeometry = new THREE.PlaneGeometry(1, 1);
-    const planeMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-    
-    axialPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
-    sagittalPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
-    coronalPlane = new THREE.Mesh(planeGeometry, planeMaterial.clone());
+    // Add container boundaries
+    const containerGeometry = new THREE.BoxGeometry(1, 1, 1);
+    const edges = new THREE.EdgesGeometry(containerGeometry);
+    const line = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffffff }));
+    scene.add(line);
 
+    // Create planes
+    const planeGeometry = new THREE.PlaneGeometry(1, 1);
+    const planeMaterial = new THREE.MeshBasicMaterial({ 
+        side: THREE.DoubleSide, 
+        transparent: true, 
+        opacity: 0.8 
+    });
+    
+    [axialPlane, sagittalPlane, coronalPlane] = ['axial', 'sagittal', 'coronal'].map(
+        type => new THREE.Mesh(planeGeometry, planeMaterial.clone())
+    );
+
+    // Set plane rotations
     axialPlane.rotation.x = Math.PI / 2;
     sagittalPlane.rotation.y = Math.PI / 2;
 
-    scene.add(axialPlane);
-    scene.add(sagittalPlane);
-    scene.add(coronalPlane);
+    // Add planes to scene
+    scene.add(axialPlane, sagittalPlane, coronalPlane);
 
-    const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff0000 });
-    const points = [];
-    points.push(new THREE.Vector3(-0.5, 0, 0));
-    points.push(new THREE.Vector3(0.5, 0, 0));
-    const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+    // Create lines
+    const lineGeometry = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(-0.5, 0, 0),
+        new THREE.Vector3(0.5, 0, 0)
+    ]);
 
-    axialLine = new THREE.Line(lineGeometry, lineMaterial);
-    sagittalLine = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: 0x00ff00 }));
-    coronalLine = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: 0x0000ff }));
+    const lineColors = [0xff0000, 0x00ff00, 0x0000ff];
+    [axialLine, sagittalLine, coronalLine] = lineColors.map(
+        color => new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color }))
+    );
 
+    // Set line rotations
     axialLine.rotation.x = Math.PI / 2;
     sagittalLine.rotation.y = Math.PI / 2;
 
-    scene.add(axialLine);
-    scene.add(sagittalLine);
-    scene.add(coronalLine);
+    // Add lines to scene
+    scene.add(axialLine, sagittalLine, coronalLine);
 
     animate();
 }
 
-function animate() {
+export function animate() {
     requestAnimationFrame(animate);
     controls.update();
     renderer.render(scene, camera);
 }
 
 export function updateSlices(axialValue, sagittalValue, coronalValue) {
-    if (!niftiImage || !axialPlane || !sagittalPlane || !coronalPlane) return;
+    console.log('Updating slices:', { axialValue, sagittalValue, coronalValue });
+
+    if (!niftiImage || !axialPlane || !sagittalPlane || !coronalPlane) {
+        console.warn('Required objects not initialized. Aborting slice update.');
+        return;
+    }
 
     const dims = niftiHeader.dims.slice(1, 4);
+    console.log('Image dimensions:', dims);
+
     const aspectRatio = {
         x: dims[0] / Math.max(...dims),
         y: dims[1] / Math.max(...dims),
         z: dims[2] / Math.max(...dims)
     };
+    console.log('Aspect ratio:', aspectRatio);
 
     updatePlanePositions(axialValue, sagittalValue, coronalValue, aspectRatio, dims);
 
+    console.log('Updating axial plane texture');
     updatePlaneTexture(axialPlane, axialValue, 'axial');
+    console.log('Updating sagittal plane texture');
     updatePlaneTexture(sagittalPlane, sagittalValue, 'sagittal');
+    console.log('Updating coronal plane texture');
     updatePlaneTexture(coronalPlane, coronalValue, 'coronal');
+
+    console.log('Slice update complete');
 }
 
 function updatePlanePositions(axialIndex, sagittalIndex, coronalIndex, aspectRatio, dims) {
@@ -227,6 +262,15 @@ export function clearImage() {
     controls = null;
     niftiImage = null;
     niftiHeader = null;
+}
+
+export function updateCanvasSize(width, height) {
+    if (!renderer || !camera) return;
+
+    renderer.setSize(width, height);
+    camera.aspect = width / height;
+    camera.updateProjectionMatrix();
+    renderer.render(scene, camera);
 }
 
 export function loadNiftiImage(arrayBuffer) {

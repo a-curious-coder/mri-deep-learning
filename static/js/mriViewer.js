@@ -2,10 +2,20 @@ let scene, camera, renderer, niftiImage, niftiHeader;
 let axialPlane, sagittalPlane, coronalPlane;
 let axialLine, sagittalLine, coronalLine;
 let controls;
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+let isNiftiLoaded = false;
 
 export function initMRIViewer() {
+    // Get the container element
+    const container = document.getElementById('mri-viewer-container');
+    
+    // Check if the container element exists
+    if (!container) {
+        console.error('MRI viewer container not found');
+        return;
+    }
+
     // Get the container dimensions
-    const container = document.getElementById('mri-viewer');
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
 
@@ -24,7 +34,7 @@ export function initMRIViewer() {
     camera.lookAt(0, 0, 0);
 
     // Controls setup
-    controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.25;
     controls.enableZoom = true;
@@ -76,9 +86,11 @@ export function initMRIViewer() {
 }
 
 export function animate() {
-    requestAnimationFrame(animate);
-    controls.update();
-    renderer.render(scene, camera);
+    if (isNiftiLoaded && renderer && scene && camera && controls) {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+    }
 }
 
 export function updateSlices(axialValue, sagittalValue, coronalValue) {
@@ -245,7 +257,7 @@ function adjustPlaneScale(plane, width, height, orientation) {
 }
 
 export function clearImage() {
-    const viewerContainer = document.getElementById('mri-viewer');
+    const viewerContainer = document.getElementById('mri-viewer-container');
     viewerContainer.innerHTML = '<p class="text-center text-light-green-800 dark:text-gray-300">Drag and drop a .nii file here<br>or click to select</p>';
     
     if (scene) {
@@ -262,6 +274,7 @@ export function clearImage() {
     controls = null;
     niftiImage = null;
     niftiHeader = null;
+    isNiftiLoaded = false;
 }
 
 export function updateCanvasSize(width, height) {
@@ -282,6 +295,7 @@ export function loadNiftiImage(arrayBuffer) {
     console.log('Data type:', niftiHeader.datatypeCode);
     console.log('Voxel dimensions:', niftiHeader.pixDims.slice(1, 4));
 
+    isNiftiLoaded = true;
     initMRIViewer();
 
     const dims = niftiHeader.dims.slice(1, 4);

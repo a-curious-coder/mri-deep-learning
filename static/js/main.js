@@ -1,7 +1,7 @@
 import { setInitialTheme } from './theme.js';
 import { updateSettings } from './settings.js';
-import { updateSlices, clearImage, loadNiftiImage } from './mriViewer.js';
-import { initMRIViewer, updateCanvasSize, animate } from './mriViewer.js';
+import { updateSlices, clearImage, loadNiftiImage, animate } from './mriViewer.js';
+import { initMRIViewer, updateCanvasSize } from './mriViewer.js';
 
 let isImageLoaded = false;
 let containerWidth = 800;
@@ -23,6 +23,7 @@ function handleFileUpload(event) {
             
             isImageLoaded = true;
             updateUploadState();
+            animate(); // Start animation after loading
         };
         reader.readAsArrayBuffer(file);
     } else {
@@ -31,7 +32,7 @@ function handleFileUpload(event) {
 }
 
 function updateUploadState() {
-    const dropZone = document.getElementById('mri-viewer');
+    const dropZone = document.getElementById('mri-viewer-container');
     const clearButton = document.getElementById('clear-button');
     if (isImageLoaded) {
         dropZone.removeEventListener('click', triggerFileInput);
@@ -73,12 +74,11 @@ function loadExampleFile() {
             
             console.log('NIfTI info:', niftiInfo);
 
-            // Set isImageLoaded to true and update the upload state
             isImageLoaded = true;
             updateUploadState();
             
-            // Update the viewer title
             document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii';
+            animate(); // Start animation after loading
         })
         .catch(error => console.error('Error loading example.nii:', error));
 }
@@ -95,42 +95,66 @@ function handleClearImage() {
     document.getElementById('coronal-slider').value = 50;
 }
 
-document.addEventListener('DOMContentLoaded', function() {
+function applyCanvasSize() {
+    const width = parseInt(document.getElementById('canvas-width').value);
+    const height = parseInt(document.getElementById('canvas-height').value);
+    updateCanvasSize(width, height);
+}
+
+window.onload = function() {
     setInitialTheme();
     
     // Initialize MRI viewer
-    initMRIViewer();
+    const mriViewerContainer = document.getElementById('mri-viewer-container');
+    if (mriViewerContainer) {
+        initMRIViewer();
+    } else {
+        console.error('MRI viewer container not found');
+    }
 
-    const dropZone = document.getElementById('mri-viewer');
+    // Change this line
+    const dropZone = document.getElementById('mri-viewer-container');
     const fileInput = document.getElementById('file-input');
     const clearButton = document.getElementById('clear-button');
 
-    dropZone.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!isImageLoaded) {
-            this.classList.add('bg-light-green-300', 'dark:bg-gray-600');
-        }
-    });
+    if (dropZone) {
+        dropZone.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!isImageLoaded) {
+                this.classList.add('bg-light-green-300', 'dark:bg-gray-600');
+            }
+        });
 
-    dropZone.addEventListener('dragleave', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
-    });
+        dropZone.addEventListener('dragleave', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+        });
 
-    dropZone.addEventListener('drop', function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
-        if (!isImageLoaded) {
-            handleFileUpload(e);
-        }
-    });
+        dropZone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+            if (!isImageLoaded) {
+                handleFileUpload(e);
+            }
+        });
+    } else {
+        console.error('Drop zone element not found');
+    }
 
-    fileInput.addEventListener('change', handleFileUpload);
+    if (fileInput) {
+        fileInput.addEventListener('change', handleFileUpload);
+    } else {
+        console.error('File input element not found');
+    }
 
-    clearButton.addEventListener('click', handleClearImage);
+    if (clearButton) {
+        clearButton.addEventListener('click', handleClearImage);
+    } else {
+        console.error('Clear button element not found');
+    }
 
     // Add event listeners for sliders
     document.getElementById('axial-slider').addEventListener('input', function() {
@@ -144,25 +168,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Add event listener for the Apply Canvas Size button
-    document.querySelector('button[onclick="applyCanvasSize()"]').addEventListener('click', applyCanvasSize);
-});
+    const applyCanvasSizeButton = document.getElementById('apply-canvas-size');
+    if (applyCanvasSizeButton) {
+        applyCanvasSizeButton.addEventListener('click', applyCanvasSize);
+    } else {
+        console.error('Apply Canvas Size button not found');
+    }
+};
 
 // Export functions for use in HTML
 window.handleFileUpload = handleFileUpload;
 window.handleClearImage = handleClearImage;
 window.updateSettings = updateSettings;
+window.applyCanvasSize = applyCanvasSize;  // Add this line
 
-initMRIViewer();
-animate();
-
-// Update the applyCanvasSize function
-function applyCanvasSize() {
-    const width = parseInt(document.getElementById('canvas-width').value);
-    const height = parseInt(document.getElementById('canvas-height').value);
-    
-    // Update the canvas size
-    updateCanvasSize(width, height);
-}
-
-// Make the function globally accessible
-window.applyCanvasSize = applyCanvasSize;
+// Remove these lines from the end of the file
+// initMRIViewer();
+// animate();

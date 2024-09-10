@@ -1,0 +1,57 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.8
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Run tests
+      run: python -m unittest discover tests
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build Docker image
+      run: docker build -t neurosight:latest .
+
+    - name: Deploy to VPS
+      env:
+        VPS_HOST: ${{ secrets.VPS_HOST }}
+        VPS_USER: ${{ secrets.VPS_USER }}
+        VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      run: |
+        echo "$VPS_SSH_KEY" > vps_ssh_key
+        chmod 600 vps_ssh_key
+        docker save neurosight:latest | gzip > neurosight.tar.gz
+        scp -i vps_ssh_key -o StrictHostKeyChecking=no neurosight.tar.gz ${VPS_USER}@${VPS_HOST}:~/
+        ssh -i vps_ssh_key -o StrictHostKeyChecking=no ${VPS_USER}@${VPS_HOST} '
+          docker load < neurosight.tar.gz
+          docker stop neurosight-container || true
+          docker rm neurosight-container || true
+          docker run -d --name neurosight-container -p 80:5000 neurosight:latest
+          rm neurosight.tar.gz
+        '
+        rm vps_ssh_key neurosight.tar.gz

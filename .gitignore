@@ -10,7 +10,6 @@ models/
 *.npy
 *.env
 *.csv
-*.html
 *.DS_Store
 *.nii
 data/

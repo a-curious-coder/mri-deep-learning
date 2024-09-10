@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neurosight</title>
+    <script type="importmap">
+        {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@v0.149.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@v0.149.0/examples/jsm/"
+        }
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        secondary: {
+                            50: '#f5f3ff',
+                            100: '#ede9fe',
+                            200: '#ddd6fe',
+                            300: '#c4b5fd',
+                            400: '#a78bfa',
+                            500: '#8b5cf6',
+                            600: '#7c3aed',
+                            700: '#6d28d9',
+                            800: '#5b21b6',
+                            900: '#4c1d95',
+                        },
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Poppins', 'sans-serif'],
+                    },
+                },
+            },
+        }
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/themes/light.css">
+    <script src="{{ url_for('static', filename='js/main.js') }}" type="module"></script>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🧠</text></svg>">
+    <script src="https://cdn.jsdelivr.net/npm/nifti-reader-js@0.5.3/release/current/nifti-reader.min.js"></script>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100 font-sans">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <nav class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-primary-600 dark:text-primary-400 font-heading">Neurosight</h1>
+            </div>
+            <button onclick="toggleDarkMode()" class="p-2 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-colors duration-200">
+                <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 20 20">
+                    <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd" />
+                </svg>
+            </button>
+        </nav>
+
+        <div class="mb-12 bg-gray-50 dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-4 text-primary-600 dark:text-primary-400 font-heading">About Neurosight</h2>
+            <p class="text-gray-700 dark:text-gray-300">
+                Neurosight is an experimental Alzheimer's AI Classifier developed during my MSc year at University. This project aims to leverage advanced machine learning techniques to analyze MRI scans and assist in the early detection of Alzheimer's disease. By combining image processing and AI, Neurosight explores the potential of technology in enhancing neurological diagnostics.
+            </p>
+        </div>
+
+        <div class="grid lg:grid-cols-3 gap-8">
+            <div class="lg:col-span-2 bg-gray-50 dark:bg-gray-800 p-6 rounded-lg shadow-lg transition-all duration-300 ease-in-out">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 id="mri-viewer-title" class="text-2xl font-semibold text-primary-600 dark:text-primary-400 font-heading">MRI Viewer</h2>
+                    <div>
+                        <button id="clear-button" class="px-4 py-2 bg-red-500 text-white rounded-md hover:bg-red-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50" data-tippy-content="Clear the current MRI image">
+                            Clear
+                        </button>
+                    </div>
+                </div>
+                <div id="mri-viewer-container" class="w-full h-[32rem] bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center cursor-pointer transition-all duration-300 ease-in-out hover:shadow-md border-2 border-gray-200 dark:border-gray-600">
+                    <div id="mri-2d-viewer" class="w-full h-full">
+                        <p class="text-center text-gray-500 dark:text-gray-400 transition-colors duration-300">Drop .nii file here or click to upload</p>
+                    </div>
+                </div>
+                <input type="file" id="file-input" accept=".nii" class="hidden">
+                <div class="mt-6 space-y-4">
+                    <div class="slider-container">
+                        <label for="axial-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-300">Axial Slice:</label>
+                        <input type="range" id="axial-slider" min="0" max="100" value="50" class="w-full">
+                    </div>
+                    <div class="slider-container">
+                        <label for="sagittal-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-300">Sagittal Slice:</label>
+                        <input type="range" id="sagittal-slider" min="0" max="100" value="50" class="w-full">
+                    </div>
+                    <div class="slider-container">
+                        <label for="coronal-slider" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors duration-300">Coronal Slice:</label>
+                        <input type="range" id="coronal-slider" min="0" max="100" value="50" class="w-full">
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+                <h2 class="text-2xl font-semibold mb-6 text-primary-600 dark:text-primary-400 font-heading">Settings & Actions</h2>
+                <div class="space-y-6">
+                    <div class="space-y-4">
+                        <input type="number" id="image_size" placeholder="Image Size" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200" title="Set the size of the image in pixels">
+                        <input type="text" id="slice_mode" placeholder="Slice Mode" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200" title="Choose the slice mode: 'axial', 'sagittal', or 'coronal'">
+                        <input type="number" id="test_size" placeholder="Test Size" step="0.01" min="0" max="1" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200" title="Set the proportion of the dataset to be used as test data (0-1)">
+                        <input type="number" id="val_size" placeholder="Validation Size" step="0.01" min="0" max="1" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200" title="Set the proportion of the dataset to be used as validation data (0-1)">
+                    </div>
+                    
+                    <button onclick="updateSettings()" class="w-full px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50" data-tippy-content="Apply the current settings">
+                        Update Settings
+                    </button>
+
+                    <form action="{{ url_for('run') }}" method="post" class="space-y-4">
+                        <button type="submit" name="action" value="image" class="w-full px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50" data-tippy-content="Process and analyze the MRI image data">
+                            Process Image Data
+                        </button>
+                        <button type="submit" name="action" value="tabular" class="w-full px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50" data-tippy-content="Process and analyze tabular data related to the MRI scans">
+                            Process Tabular Data
+                        </button>
+                        <button type="submit" name="action" value="prepare" class="w-full px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50" data-tippy-content="Prepare the dataset for analysis">
+                            Prepare Data
+                        </button>
+                    </form>
+                </div>
+
+                <div class="mt-6">
+                    <h3 class="text-lg font-semibold mb-2 text-primary-600 dark:text-primary-400">3D View Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="volume-threshold" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Threshold:</label>
+                            <input type="range" id="volume-threshold" min="0" max="1" step="0.01" value="0.1" 
+                                   oninput="updateVolumeThreshold(this.value)" 
+                                   class="w-full">
+                        </div>
+                        <div>
+                            <label for="volume-steps" class="block text-sm font-medium text-gray-700 dark:text-gray-300">Ray Steps:</label>
+                            <input type="range" id="volume-steps" min="10" max="200" step="10" value="100" 
+                                   oninput="updateVolumeSteps(this.value)" 
+                                   class="w-full">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="mt-12 bg-gray-50 dark:bg-gray-800 p-6 rounded-lg shadow-lg">
+            <h2 class="text-2xl font-semibold mb-6 text-primary-600 dark:text-primary-400 font-heading">Canvas Settings</h2>
+            <div class="grid md:grid-cols-2 gap-6">
+                <div>
+                    <label for="canvas-width" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Canvas Width:</label>
+                    <input type="number" id="canvas-width" value="800" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200">
+                </div>
+                <div>
+                    <label for="canvas-height" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Canvas Height:</label>
+                    <input type="number" id="canvas-height" value="600" class="w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-800 dark:text-gray-200 focus:ring-2 focus:ring-primary-500 focus:border-primary-500 transition-colors duration-200">
+                </div>
+            </div>
+            <button id="apply-canvas-size" class="mt-6 px-6 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50">Apply Canvas Size</button>
+        </div>
+    </div>
+    
+    <script type="module">
+        import { toggleDarkMode } from "{{ url_for('static', filename='js/theme.js') }}";
+        import { clearImage } from "{{ url_for('static', filename='js/mriViewer.js') }}";
+        
+        window.toggleDarkMode = toggleDarkMode;
+        
+        document.getElementById('clear-button').addEventListener('click', clearImage);
+    </script>
+    <script>
+        // Initialize Tippy.js tooltips
+        tippy('[data-tippy-content]', {
+            theme: 'light',
+            placement: 'top',
+        });
+    </script>
+</body>
+</html>

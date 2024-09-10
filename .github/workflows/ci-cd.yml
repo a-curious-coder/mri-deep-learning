@@ -51,7 +51,7 @@ jobs:
           docker load < neurosight.tar.gz
           docker stop neurosight-container || true
           docker rm neurosight-container || true
-          docker run -d --name neurosight-container -p 80:5000 neurosight:latest
+          docker run -d --name neurosight-container -p 5000:5000 neurosight:latest
           rm neurosight.tar.gz
         '
         rm vps_ssh_key neurosight.tar.gz

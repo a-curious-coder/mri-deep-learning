@@ -11,8 +11,6 @@ models/
 *.env
 *.csv
 *.DS_Store
-*.nii
-data/
 logs/
 docs/
 # Byte-compiled / optimized / DLL files

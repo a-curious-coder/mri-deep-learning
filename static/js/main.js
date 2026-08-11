@@ -1,11 +1,29 @@
-import { setInitialTheme } from './theme.js';
 import { updateSettings } from './settings.js';
-import { updateSlices, clearImage, loadNiftiImage, animate } from './mriViewer.js';
-import { initMRIViewer, updateCanvasSize } from './mriViewer.js';
+import { logMessage } from './log.js';
+import {
+    updateSlices,
+    clearImage,
+    loadNiftiImage,
+    animate,
+    initMRIViewer,
+    updateCanvasSize,
+    setViewMode,
+    updateVolumeThreshold,
+    updateVolumeSteps,
+} from './mriViewer.js';
 
 let isImageLoaded = false;
-let containerWidth = 800;
-let containerHeight = 500;
+
+function toggleTheme() {
+    const isDark = document.documentElement.dataset.theme === 'dark';
+    if (isDark) {
+        delete document.documentElement.dataset.theme;
+        localStorage.setItem('theme', 'light');
+    } else {
+        document.documentElement.dataset.theme = 'dark';
+        localStorage.setItem('theme', 'dark');
+    }
+}
 
 // File handling functions
 function handleFileUpload(event) {
@@ -13,14 +31,14 @@ function handleFileUpload(event) {
     const file = event.target.files ? event.target.files[0] : event.dataTransfer.files[0];
     if (file && file.name.endsWith('.nii')) {
         document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${file.name}`;
-        
+
         const reader = new FileReader();
         reader.onload = function(e) {
             const arrayBuffer = e.target.result;
             const niftiInfo = loadNiftiImage(arrayBuffer);
-            
+
             console.log('NIfTI header loaded:', niftiInfo);
-            
+
             isImageLoaded = true;
             updateUploadState();
             animate(); // Start animation after loading
@@ -71,12 +89,12 @@ function loadExampleFile() {
         .then(response => response.arrayBuffer())
         .then(arrayBuffer => {
             const niftiInfo = loadNiftiImage(arrayBuffer);
-            
+
             console.log('NIfTI info:', niftiInfo);
 
             isImageLoaded = true;
             updateUploadState();
-            
+
             document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii';
             animate(); // Start animation after loading
         })
@@ -88,7 +106,7 @@ function handleClearImage() {
     isImageLoaded = false;
     updateUploadState();
     document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer';
-    
+
     // Reset sliders
     document.getElementById('axial-slider').value = 50;
     document.getElementById('sagittal-slider').value = 50;
@@ -96,14 +114,32 @@ function handleClearImage() {
 }
 
 function applyCanvasSize() {
-    const width = parseInt(document.getElementById('canvas-width').value);
-    const height = parseInt(document.getElementById('canvas-height').value);
+    const width = parseInt(document.getElementById('canvas-width').value, 10);
+    const height = parseInt(document.getElementById('canvas-height').value, 10);
     updateCanvasSize(width, height);
 }
 
+async function runPipelineAction(button) {
+    const action = button.dataset.action;
+    const label = button.textContent.trim();
+    button.disabled = true;
+    logMessage(`Running ${label}…`);
+
+    try {
+        const response = await fetch('/run', {
+            method: 'POST',
+            body: new URLSearchParams({ action }),
+        });
+        const text = await response.text();
+        logMessage(text, response.ok ? 'success' : 'error');
+    } catch (error) {
+        logMessage(`${label} failed: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+    }
+}
+
 window.onload = function() {
-    setInitialTheme();
-    
     // Initialize MRI viewer
     const mriViewerContainer = document.getElementById('mri-viewer-container');
     if (mriViewerContainer) {
@@ -112,30 +148,60 @@ window.onload = function() {
         console.error('MRI viewer container not found');
     }
 
-    // Change this line
     const dropZone = document.getElementById('mri-viewer-container');
     const fileInput = document.getElementById('file-input');
     const clearButton = document.getElementById('clear-button');
+
+    document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
+    document.getElementById('update-settings')?.addEventListener('click', updateSettings);
+
+    document.querySelectorAll('.pipeline-action').forEach(button => {
+        button.addEventListener('click', () => runPipelineAction(button));
+    });
+
+    document.querySelectorAll('.mode-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            setViewMode(button.dataset.mode);
+        });
+    });
+
+    document.querySelectorAll('details.tool').forEach(tool => {
+        tool.addEventListener('toggle', () => {
+            if (!tool.open) return;
+            document.querySelectorAll('details.tool').forEach(other => {
+                if (other !== tool) other.open = false;
+            });
+        });
+    });
+
+    document.getElementById('volume-threshold')?.addEventListener('input', function() {
+        updateVolumeThreshold(this.value);
+    });
+    document.getElementById('volume-steps')?.addEventListener('input', function() {
+        updateVolumeSteps(this.value);
+    });
 
     if (dropZone) {
         dropZone.addEventListener('dragover', function(e) {
             e.preventDefault();
             e.stopPropagation();
             if (!isImageLoaded) {
-                this.classList.add('bg-light-green-300', 'dark:bg-gray-600');
+                this.classList.add('drag-over');
             }
         });
 
         dropZone.addEventListener('dragleave', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+            this.classList.remove('drag-over');
         });
 
         dropZone.addEventListener('drop', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            this.classList.remove('bg-light-green-300', 'dark:bg-gray-600');
+            this.classList.remove('drag-over');
             if (!isImageLoaded) {
                 handleFileUpload(e);
             }
@@ -175,13 +241,3 @@ window.onload = function() {
         console.error('Apply Canvas Size button not found');
     }
 };
-
-// Export functions for use in HTML
-window.handleFileUpload = handleFileUpload;
-window.handleClearImage = handleClearImage;
-window.updateSettings = updateSettings;
-window.applyCanvasSize = applyCanvasSize;  // Add this line
-
-// Remove these lines from the end of the file
-// initMRIViewer();
-// animate();

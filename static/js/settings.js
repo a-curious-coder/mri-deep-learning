@@ -1,3 +1,5 @@
+import { logMessage } from './log.js';
+
 export async function updateSettings() {
     const settings = {
         image_size: document.getElementById('image_size').value,
@@ -6,17 +8,21 @@ export async function updateSettings() {
         val_size: document.getElementById('val_size').value,
     };
 
-    const response = await fetch('/update_settings', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(settings),
-    });
+    try {
+        const response = await fetch('/update_settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(settings),
+        });
 
-    if (response.ok) {
-        alert('Settings updated successfully');
-    } else {
-        alert('Failed to update settings');
+        if (response.ok) {
+            logMessage('Settings updated successfully', 'success');
+        } else {
+            logMessage('Failed to update settings', 'error');
+        }
+    } catch (error) {
+        logMessage(`Settings request failed: ${error.message}`, 'error');
     }
 }

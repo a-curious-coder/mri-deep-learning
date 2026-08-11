@@ -1,9 +1,13 @@
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
 let scene, camera, renderer, niftiImage, niftiHeader;
 let axialPlane, sagittalPlane, coronalPlane;
 let axialLine, sagittalLine, coronalLine;
 let controls;
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 let isNiftiLoaded = false;
+let viewMode = 'slices';
+let volumeMesh, volumeTexture;
 
 export function initMRIViewer() {
     // Get the container element
@@ -19,6 +23,9 @@ export function initMRIViewer() {
     const containerWidth = container.clientWidth;
     const containerHeight = container.clientHeight;
 
+    volumeMesh = null;
+    volumeTexture = null;
+
     // Scene setup
     scene = new THREE.Scene();
     camera = new THREE.PerspectiveCamera(75, containerWidth / containerHeight, 0.1, 1000);
@@ -30,7 +37,7 @@ export function initMRIViewer() {
     container.appendChild(renderer.domElement);
 
     // Camera positioning
-    camera.position.set(1.5, 1.5, 1.5);
+    camera.position.set(0.8, 0.8, 0.8);
     camera.lookAt(0, 0, 0);
 
     // Controls setup
@@ -258,8 +265,8 @@ function adjustPlaneScale(plane, width, height, orientation) {
 
 export function clearImage() {
     const viewerContainer = document.getElementById('mri-viewer-container');
-    viewerContainer.innerHTML = '<p class="text-center text-light-green-800 dark:text-gray-300">Drag and drop a .nii file here<br>or click to select</p>';
-    
+    viewerContainer.innerHTML = '<p class="hint">Drop .nii file here or click to upload</p>';
+
     if (scene) {
         while(scene.children.length > 0){ 
             scene.remove(scene.children[0]); 
@@ -275,6 +282,164 @@ export function clearImage() {
     niftiImage = null;
     niftiHeader = null;
     isNiftiLoaded = false;
+}
+
+const volumeVertexShader = `
+out vec3 vOrigin;
+out vec3 vDirection;
+
+void main() {
+    vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+    gl_Position = projectionMatrix * mvPosition;
+    vOrigin = vec3(inverse(modelMatrix) * vec4(cameraPosition, 1.0));
+    vDirection = position - vOrigin;
+}
+`;
+
+const volumeFragmentShader = `
+precision highp float;
+precision highp sampler3D;
+
+uniform sampler3D map;
+uniform float threshold;
+uniform int steps;
+
+in vec3 vOrigin;
+in vec3 vDirection;
+out vec4 outColor;
+
+vec2 hitBox(vec3 orig, vec3 dir) {
+    vec3 boxMin = vec3(-0.5);
+    vec3 boxMax = vec3(0.5);
+    vec3 invDir = 1.0 / dir;
+    vec3 tMinTmp = (boxMin - orig) * invDir;
+    vec3 tMaxTmp = (boxMax - orig) * invDir;
+    vec3 tMin = min(tMinTmp, tMaxTmp);
+    vec3 tMax = max(tMinTmp, tMaxTmp);
+    float t0 = max(tMin.x, max(tMin.y, tMin.z));
+    float t1 = min(tMax.x, min(tMax.y, tMax.z));
+    return vec2(t0, t1);
+}
+
+void main() {
+    vec3 rayDir = normalize(vDirection);
+    vec2 bounds = hitBox(vOrigin, rayDir);
+    if (bounds.x > bounds.y) discard;
+    bounds.x = max(bounds.x, 0.0);
+
+    vec3 p = vOrigin + bounds.x * rayDir;
+    float rayLength = bounds.y - bounds.x;
+    float delta = rayLength / float(steps);
+
+    vec4 accumulated = vec4(0.0);
+    for (int i = 0; i < 512; i++) {
+        if (float(i) >= float(steps)) break;
+        float density = texture(map, p + 0.5).r;
+        if (density > threshold) {
+            float alpha = density * 0.2;
+            accumulated.rgb += (1.0 - accumulated.a) * vec3(density) * alpha;
+            accumulated.a += (1.0 - accumulated.a) * alpha;
+            if (accumulated.a >= 0.95) break;
+        }
+        p += rayDir * delta;
+    }
+
+    if (accumulated.a < 0.01) discard;
+    outColor = accumulated;
+}
+`;
+
+function buildVolumeTexture() {
+    // niftiImage is laid out i + j*nx + k*nx*ny (x fastest), matching
+    // Data3DTexture's expected x-fastest layout when width=nx, height=ny, depth=nz.
+    const dims = niftiHeader.dims.slice(1, 4);
+    const width = dims[0];
+    const height = dims[1];
+    const depth = dims[2];
+    const raw = new Uint16Array(niftiImage);
+
+    let min = Infinity;
+    let max = -Infinity;
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] < min) min = raw[i];
+        if (raw[i] > max) max = raw[i];
+    }
+    const range = max - min || 1;
+
+    const data = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; i++) {
+        data[i] = Math.round(((raw[i] - min) / range) * 255);
+    }
+
+    const texture = new THREE.Data3DTexture(data, width, height, depth);
+    texture.format = THREE.RedFormat;
+    texture.type = THREE.UnsignedByteType;
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.unpackAlignment = 1;
+    texture.needsUpdate = true;
+    return texture;
+}
+
+function createVolumeMesh(texture) {
+    const thresholdInput = document.getElementById('volume-threshold');
+    const stepsInput = document.getElementById('volume-steps');
+
+    const geometry = new THREE.BoxGeometry(1, 1, 1);
+    const material = new THREE.ShaderMaterial({
+        glslVersion: THREE.GLSL3,
+        uniforms: {
+            map: { value: texture },
+            threshold: { value: thresholdInput ? parseFloat(thresholdInput.value) : 0.1 },
+            steps: { value: stepsInput ? parseInt(stepsInput.value, 10) : 100 },
+        },
+        vertexShader: volumeVertexShader,
+        fragmentShader: volumeFragmentShader,
+        side: THREE.BackSide,
+        transparent: true,
+    });
+    return new THREE.Mesh(geometry, material);
+}
+
+export function setViewMode(mode) {
+    viewMode = mode;
+    if (!scene) return;
+
+    const slicePlanes = [axialPlane, sagittalPlane, coronalPlane];
+    const sliceLines = [axialLine, sagittalLine, coronalLine];
+
+    if (mode === 'volume') {
+        slicePlanes.forEach(p => p && (p.visible = false));
+        sliceLines.forEach(l => l && (l.visible = false));
+
+        if (!volumeMesh && niftiImage) {
+            volumeTexture = buildVolumeTexture();
+            volumeMesh = createVolumeMesh(volumeTexture);
+            // Texture's z axis (k/axial, superior-inferior) needs to map to
+            // three.js's Y-up, not stay on Z, and the face needs to turn
+            // toward the default camera. Object3D.rotateOnAxis post-multiplies
+            // the quaternion (this.quaternion = this.quaternion * newRotation),
+            // so the FIRST call ends up as the outer/last-applied transform and
+            // the SECOND call is applied first, in the original frame - call
+            // order is reversed from what you'd naively expect.
+            volumeMesh.rotateY(Math.PI);
+            volumeMesh.rotateX(-Math.PI / 2);
+            scene.add(volumeMesh);
+        }
+        if (volumeMesh) volumeMesh.visible = true;
+    } else {
+        slicePlanes.forEach(p => p && (p.visible = true));
+        sliceLines.forEach(l => l && (l.visible = true));
+        if (volumeMesh) volumeMesh.visible = false;
+    }
+}
+
+export function updateVolumeThreshold(value) {
+    if (volumeMesh) volumeMesh.material.uniforms.threshold.value = parseFloat(value);
+}
+
+export function updateVolumeSteps(value) {
+    if (volumeMesh) volumeMesh.material.uniforms.steps.value = parseInt(value, 10);
 }
 
 export function updateCanvasSize(width, height) {
@@ -322,6 +487,7 @@ export function loadNiftiImage(arrayBuffer) {
 
     // Initialize the slices with the middle values
     updateSlices(midAxial, midSagittal, midCoronal);
+    setViewMode(viewMode);
 
     return {
         dimensions: dims,

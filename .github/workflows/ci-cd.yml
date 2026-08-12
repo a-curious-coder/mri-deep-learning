@@ -59,6 +59,7 @@ jobs:
           ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/
 
         ssh -i deploy_key -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+          set -e
           docker load < ${DEPLOY_PATH}/scanview.tar.gz
           docker stop scanview-container || true
           docker rm scanview-container || true
@@ -72,5 +73,13 @@ jobs:
 
           sudo -n cp ${DEPLOY_PATH}/scanview.caddy.rendered /etc/caddy/sites/scanview.caddy
           sudo -n systemctl reload caddy
+
+          # Each deploy loads a fresh scanview:latest, orphaning the
+          # previous image's layers (dangling, untagged). Left unpruned
+          # this fills the disk over repeated deploys - already happened
+          # once (99% full, 212 accumulated images). -f only removes
+          # dangling layers, never anything tagged/in-use by this or any
+          # other project on this shared box.
+          docker image prune -f
         "
         rm deploy_key scanview.tar.gz scanview.caddy.rendered

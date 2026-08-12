@@ -49,8 +49,17 @@ def _extract_middle_slice(nifti_bytes):
     if data.ndim < 3:
         raise ValueError("Scan must be a 3D volume")
 
-    mid = data.shape[2] // 2
-    return data[:, :, mid]
+    # The array's geometric middle index is NOT mid-brain - for a full
+    # head scan (skull to neck) the true anatomical middle sits well past
+    # 50% of the depth axis. Checked against this repo's own example.nii:
+    # 50% (index 128/256) lands at eye-socket/orbit level, not brain tissue
+    # at all. ~75% consistently lands in a clean mid-brain cross-section
+    # instead. Still an approximation, not a real frame-selection model -
+    # see README's own note that slice selection is a genuinely hard,
+    # important problem, not solved here.
+    depth = data.shape[2]
+    index = int(depth * 0.75)
+    return data[:, :, index]
 
 
 def _preprocess(slice_data):

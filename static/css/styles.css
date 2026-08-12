@@ -533,8 +533,54 @@ input[type="number"]::placeholder {
 }
 .classify-results {
   margin-top: 1.25rem;
+}
+.result-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.result-label {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+.result-pct {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.result-toggle {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.result-toggle:hover {
+  color: var(--accent);
+}
+.result-detail {
   display: grid;
   gap: 0.9rem;
+  margin-top: 0.9rem;
+}
+.result-detail.hidden {
+  display: none;
+}
+.result-caveat {
+  margin: 0;
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  line-height: 1.4;
 }
 .class-bar-label {
   display: flex;

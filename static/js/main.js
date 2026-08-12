@@ -117,16 +117,36 @@ function renderClassifyResults(data) {
     const container = document.getElementById('classify-results');
     if (!container) return;
 
-    container.innerHTML = '';
-    data.predictions.forEach(({ label, probability }) => {
+    const top = data.predictions.find(p => p.label === data.predicted_class) || data.predictions[0];
+    const topPct = (top.probability * 100).toFixed(1);
+
+    const bars = data.predictions.map(({ label, probability }) => {
         const pct = (probability * 100).toFixed(1);
-        const bar = document.createElement('div');
-        bar.className = `class-bar${label === data.predicted_class ? ' is-top' : ''}`;
-        bar.innerHTML = `
-            <div class="class-bar-label"><span>${label}</span><span>${pct}%</span></div>
-            <div class="class-bar-track"><div class="class-bar-fill" style="width: ${pct}%"></div></div>
+        const isTop = label === data.predicted_class;
+        return `
+            <div class="class-bar${isTop ? ' is-top' : ''}">
+                <div class="class-bar-label"><span>${label}</span><span>${pct}%</span></div>
+                <div class="class-bar-track"><div class="class-bar-fill" style="width: ${pct}%"></div></div>
+            </div>
         `;
-        container.appendChild(bar);
+    }).join('');
+
+    container.innerHTML = `
+        <div class="result-summary">
+            <span class="result-label">${data.predicted_class}</span>
+            <span class="result-pct">${topPct}%</span>
+            <button type="button" class="result-toggle">Details</button>
+        </div>
+        <div class="result-detail hidden">
+            ${bars}
+            <p class="result-caveat">Demo simplification: one 2D slice, no skull-stripping - this confidence score isn't a clinically meaningful result.</p>
+        </div>
+    `;
+
+    container.querySelector('.result-toggle')?.addEventListener('click', (e) => {
+        const detail = container.querySelector('.result-detail');
+        detail?.classList.toggle('hidden');
+        e.target.textContent = detail?.classList.contains('hidden') ? 'Details' : 'Hide';
     });
 }
 
@@ -228,6 +248,22 @@ window.onload = function() {
             if (!tool.open) return;
             document.querySelectorAll('details.tool').forEach(other => {
                 if (other !== tool) other.open = false;
+            });
+
+            // Right-anchored by default; if that pushes it past the left
+            // edge of the viewport (common in a narrow embed), re-anchor
+            // from the left instead so it stays fully visible.
+            const panel = tool.querySelector('.tool-panel');
+            if (!panel) return;
+            panel.style.right = '';
+            panel.style.left = '';
+            requestAnimationFrame(() => {
+                const rect = panel.getBoundingClientRect();
+                if (rect.left < 8) {
+                    const toolRect = tool.getBoundingClientRect();
+                    panel.style.right = 'auto';
+                    panel.style.left = `${8 - toolRect.left}px`;
+                }
             });
         });
     });

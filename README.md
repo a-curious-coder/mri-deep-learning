@@ -1,4 +1,4 @@
-# Neurosight
+# scanview
 
 Experimental Alzheimer's detection from MRI brain scans, built for an MSc dissertation — deep learning classification paired with an interactive 3D scan viewer.
 
@@ -11,7 +11,7 @@ Experimental Alzheimer's detection from MRI brain scans, built for an MSc disser
 </p>
 
 <p align="center">
-  <img src="docs/screenshot.png" alt="Neurosight 3D volume viewer rendering an MRI brain scan" width="720" />
+  <img src="docs/screenshot.png" alt="scanview 3D volume viewer rendering an MRI brain scan" width="720" />
 </p>
 
 ## Abstract

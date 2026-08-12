@@ -104,22 +104,30 @@
             </div>
 
             <div class="panel side-panel">
-                <p class="panel-label">Dataset Parameters</p>
-                <div class="settings-group settings-grid-2">
-                    <div class="field">
-                        <input type="number" id="image_size" placeholder="Image size" title="Set the size of the image in pixels">
+                <p class="panel-label">Classification</p>
+                <p class="classify-hint">Upload a .nii scan above, then classify it against the trained model.</p>
+                <button id="classify-button" class="btn" disabled title="Classify the loaded scan">Classify Scan</button>
+                <div id="classify-results" class="classify-results"></div>
+
+                {% if not demo_mode %}
+                <div class="settings-sub">
+                    <h3>Dataset Parameters</h3>
+                    <div class="settings-group settings-grid-2">
+                        <div class="field">
+                            <input type="number" id="image_size" placeholder="Image size" title="Set the size of the image in pixels">
+                        </div>
+                        <div class="field">
+                            <input type="text" id="slice_mode" placeholder="Slice mode" title="Choose the slice mode: 'axial', 'sagittal', or 'coronal'">
+                        </div>
+                        <div class="field">
+                            <input type="number" id="test_size" placeholder="Test size" step="0.01" min="0" max="1" title="Set the proportion of the dataset to be used as test data (0-1)">
+                        </div>
+                        <div class="field">
+                            <input type="number" id="val_size" placeholder="Validation size" step="0.01" min="0" max="1" title="Set the proportion of the dataset to be used as validation data (0-1)">
+                        </div>
                     </div>
-                    <div class="field">
-                        <input type="text" id="slice_mode" placeholder="Slice mode" title="Choose the slice mode: 'axial', 'sagittal', or 'coronal'">
-                    </div>
-                    <div class="field">
-                        <input type="number" id="test_size" placeholder="Test size" step="0.01" min="0" max="1" title="Set the proportion of the dataset to be used as test data (0-1)">
-                    </div>
-                    <div class="field">
-                        <input type="number" id="val_size" placeholder="Validation size" step="0.01" min="0" max="1" title="Set the proportion of the dataset to be used as validation data (0-1)">
-                    </div>
+                    <button id="update-settings" class="btn" title="Apply the current settings">Update Settings</button>
                 </div>
-                <button id="update-settings" class="btn" title="Apply the current settings">Update Settings</button>
 
                 <div class="settings-sub">
                     <h3>Pipeline Actions</h3>
@@ -129,6 +137,7 @@
                         <button type="button" class="btn pipeline-action" data-action="prepare" title="Prepare the dataset for analysis">Prepare Data</button>
                     </div>
                 </div>
+                {% endif %}
 
                 <div class="log-panel">
                     <h3>Activity Log</h3>

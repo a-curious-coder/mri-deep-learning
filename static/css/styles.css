@@ -379,6 +379,15 @@ input[type="number"]::placeholder {
   background: var(--accent);
   color: var(--bg);
 }
+.btn:disabled {
+  border-color: var(--border);
+  color: var(--text-faint);
+  cursor: not-allowed;
+}
+.btn:disabled:hover {
+  background: transparent;
+  color: var(--text-faint);
+}
 .btn-danger {
   border-color: var(--danger);
   color: var(--danger);
@@ -479,4 +488,43 @@ input[type="number"]::placeholder {
 }
 .log-error {
   color: var(--danger);
+}
+
+/* Classification */
+.classify-hint {
+  margin: 0 0 1rem;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+}
+.classify-results {
+  margin-top: 1.25rem;
+  display: grid;
+  gap: 0.9rem;
+}
+.class-bar-label {
+  display: flex;
+  justify-content: space-between;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-dim);
+  margin-bottom: 0.3rem;
+}
+.class-bar.is-top .class-bar-label {
+  color: var(--accent);
+  font-weight: 600;
+}
+.class-bar-track {
+  height: 0.5rem;
+  background: var(--bg-well);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.class-bar-fill {
+  height: 100%;
+  background: var(--border-strong);
+  transition: width 300ms ease;
+}
+.class-bar.is-top .class-bar-fill {
+  background: var(--accent);
 }

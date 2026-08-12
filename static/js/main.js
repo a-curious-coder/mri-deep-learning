@@ -13,6 +13,7 @@ import {
 } from './mriViewer.js';
 
 let isImageLoaded = false;
+let currentScanBlob = null;
 
 function toggleTheme() {
     const isDark = document.documentElement.dataset.theme === 'dark';
@@ -31,6 +32,7 @@ function handleFileUpload(event) {
     const file = event.target.files ? event.target.files[0] : event.dataTransfer.files[0];
     if (file && file.name.endsWith('.nii')) {
         document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${file.name}`;
+        currentScanBlob = file;
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -52,14 +54,17 @@ function handleFileUpload(event) {
 function updateUploadState() {
     const dropZone = document.getElementById('mri-viewer-container');
     const clearButton = document.getElementById('clear-button');
+    const classifyButton = document.getElementById('classify-button');
     if (isImageLoaded) {
         dropZone.removeEventListener('click', triggerFileInput);
         dropZone.classList.remove('cursor-pointer');
         clearButton.classList.remove('hidden');
+        if (classifyButton) classifyButton.disabled = false;
     } else {
         dropZone.addEventListener('click', triggerFileInput);
         dropZone.classList.add('cursor-pointer');
         clearButton.classList.add('hidden');
+        if (classifyButton) classifyButton.disabled = true;
     }
 }
 
@@ -88,6 +93,8 @@ function loadExampleFile() {
     fetch('/static/data/raw/example.nii')
         .then(response => response.arrayBuffer())
         .then(arrayBuffer => {
+            currentScanBlob = new Blob([arrayBuffer]);
+
             const niftiInfo = loadNiftiImage(arrayBuffer);
 
             console.log('NIfTI info:', niftiInfo);
@@ -104,13 +111,60 @@ function loadExampleFile() {
 function handleClearImage() {
     clearImage();
     isImageLoaded = false;
+    currentScanBlob = null;
     updateUploadState();
     document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer';
+
+    const results = document.getElementById('classify-results');
+    if (results) results.innerHTML = '';
 
     // Reset sliders
     document.getElementById('axial-slider').value = 50;
     document.getElementById('sagittal-slider').value = 50;
     document.getElementById('coronal-slider').value = 50;
+}
+
+function renderClassifyResults(data) {
+    const container = document.getElementById('classify-results');
+    if (!container) return;
+
+    container.innerHTML = '';
+    data.predictions.forEach(({ label, probability }) => {
+        const pct = (probability * 100).toFixed(1);
+        const bar = document.createElement('div');
+        bar.className = `class-bar${label === data.predicted_class ? ' is-top' : ''}`;
+        bar.innerHTML = `
+            <div class="class-bar-label"><span>${label}</span><span>${pct}%</span></div>
+            <div class="class-bar-track"><div class="class-bar-fill" style="width: ${pct}%"></div></div>
+        `;
+        container.appendChild(bar);
+    });
+}
+
+async function classifyScan() {
+    if (!currentScanBlob) return;
+    const button = document.getElementById('classify-button');
+    button.disabled = true;
+    logMessage('Classifying scan…');
+
+    try {
+        const formData = new FormData();
+        formData.append('file', currentScanBlob, 'scan.nii');
+        const response = await fetch('/classify', { method: 'POST', body: formData });
+        const data = await response.json();
+
+        if (!response.ok) {
+            logMessage(`Classification failed: ${data.error || response.statusText}`, 'error');
+            return;
+        }
+
+        renderClassifyResults(data);
+        logMessage(`Classified as ${data.predicted_class}`, 'success');
+    } catch (error) {
+        logMessage(`Classification failed: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+    }
 }
 
 function applyCanvasSize() {
@@ -154,6 +208,7 @@ window.onload = function() {
 
     document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     document.getElementById('update-settings')?.addEventListener('click', updateSettings);
+    document.getElementById('classify-button')?.addEventListener('click', classifyScan);
 
     document.querySelectorAll('.pipeline-action').forEach(button => {
         button.addEventListener('click', () => runPipelineAction(button));

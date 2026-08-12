@@ -2,6 +2,8 @@
 
 Experimental Alzheimer's detection from MRI brain scans, built for an MSc dissertation — deep learning classification paired with an interactive 3D scan viewer.
 
+**Live demo:** [scanview.cmclennan.dev](https://scanview.cmclennan.dev) — upload a `.nii` scan and classify it against the trained model.
+
 <p align="center">
   <a href="https://www.python.org/"><img src="https://shieldcn.dev/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white&variant=secondary" alt="Python 3.11" /></a>
   <a href="https://www.tensorflow.org/"><img src="https://shieldcn.dev/badge/TensorFlow-2.x-FF6F00.svg?logo=tensorflow&logoColor=white&variant=secondary" alt="TensorFlow 2.x" /></a>

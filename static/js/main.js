@@ -166,7 +166,7 @@ function renderClassifyResults(data) {
         </div>
         <div class="result-detail hidden">
             ${bars}
-            <p class="result-caveat">Demo simplification: one 2D slice, no skull-stripping - this confidence score isn't a clinically meaningful result.</p>
+            <p class="result-caveat">Demo simplification: one fixed-depth 2D slice, no real frame-selection model - this confidence score isn't a clinically meaningful result.</p>
         </div>
     `;
 

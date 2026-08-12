@@ -56,7 +56,7 @@ MRI scans are 3D volumes (~256 slices each in this dataset); only some slices ca
 
 | | |
 |---|---|
-| **ML / backend** | Python, TensorFlow/Keras, Flask, Pandas, NumPy, SciPy, OpenCV, scikit-learn, scikit-image, Nibabel (NIfTI file I/O) |
+| **ML / backend** | Python, TensorFlow/Keras, PyTorch (skull-stripping via [deepbet](https://github.com/wwu-mmll/deepbet)), Flask, Pandas, NumPy, SciPy, OpenCV, scikit-learn, scikit-image, Nibabel (NIfTI file I/O) |
 | **Frontend** | Vanilla JS (ES modules), Three.js (3D volume/slice rendering), hand-written CSS |
 | **Data** | MRI scans in NIfTI format, tabular clinical data, stored in AWS S3 |
 | **Deployment** | Docker, GitHub Actions CI/CD |
@@ -80,7 +80,7 @@ pip install -r requirements.txt
 flask run
 ```
 
-Visit `http://localhost:5000`. On first load the viewer auto-loads a bundled example scan (`data/raw/example.nii`) so there's something to look at without needing the full dataset — click **Slices**/**Volume** in the toolbar to switch view modes.
+Visit `http://localhost:5000`. Drop in your own `.nii` file, or click one of the bundled example scans to load it without needing the full dataset — click **Slices**/**Volume** in the toolbar to switch view modes.
 
 > **Note:** `requirements.txt` pins `tensorflow-intel` for Windows only (`sys_platform == "win32"`) — it's a Windows-only package and breaks installs on Linux/Mac otherwise.
 
@@ -89,7 +89,7 @@ Visit `http://localhost:5000`. On first load the viewer auto-loads a bundled exa
 - **MRI scans** — 3D structural brain scans, NIfTI format, ~256 slices per scan, 2+ sessions per patient.
 - **Clinical data** — demographics, cognitive test scores, and diagnosis labels, joined to imaging data by patient Security ID (SID).
 
-The bundled `data/raw/example.nii` is a single sample scan for demoing the viewer; it is not the training dataset.
+The bundled example scans (`data/raw/example.nii` plus three from [OpenNeuro ds003592](https://openneuro.org/datasets/ds003592), CC0) are for demoing the viewer and classifier; none were in the training dataset.
 
 ## Acknowledgements
 

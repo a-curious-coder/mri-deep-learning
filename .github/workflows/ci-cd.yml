@@ -67,7 +67,7 @@ jobs:
             --restart unless-stopped \
             -p 127.0.0.1:8095:5000 \
             -e DEMO_MODE=true \
-            --memory=768m --memory-swap=768m --cpus=1.5 \
+            --memory=1536m --memory-swap=1536m --cpus=1.5 \
             scanview:latest
           rm ${DEPLOY_PATH}/scanview.tar.gz
 

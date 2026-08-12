@@ -1,3 +1,4 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
 absl-py
 astunparse
 blinker
@@ -8,6 +9,7 @@ charset-normalizer
 click
 colorama
 cycler
+deepbet
 Flask
 flatbuffers
 fonttools
@@ -67,6 +69,7 @@ tensorflow-intel; sys_platform == "win32"
 termcolor
 threadpoolctl
 tifffile
+torch==2.13.0+cpu
 typing_extensions
 tzdata
 urllib3

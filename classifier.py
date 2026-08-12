@@ -7,14 +7,15 @@ grayscale image is lightweight - safe for a public, resource-constrained
 deploy, unlike the training pipeline.
 
 Known simplification: takes a fixed-depth axial slice with no real
-frame-selection model. Good enough for a demo, not a clinically rigorous
-slice-selection step - see README's own note on this.
+frame-selection model - see README's own note on this.
 """
+import os
 import tempfile
 
 import nibabel as nib
 import numpy as np
 import tensorflow as tf
+from deepbet import run_bet
 from PIL import Image
 
 # A single 128x128 forward pass is sub-second on CPU either way, and pinning
@@ -39,11 +40,32 @@ def _get_model():
     return _model
 
 
+def _skull_strip(nifti_path, brain_path, mask_path, tiv_path):
+    # Training data (Falah/Alzheimer_MRI) is already skull-stripped;
+    # raw uploads aren't, which was a real domain-shift gap between what
+    # the model saw in training and what it sees here. Naive intensity/
+    # morphology thresholding can't separate skull from brain (no gap
+    # between them in the raw data) - this needs an actual trained
+    # segmentation model. deepbet is small (~10MB weights), CPU-capable,
+    # and runs in ~2s per scan.
+    run_bet(
+        [nifti_path], [brain_path], [mask_path], [tiv_path],
+        threshold=0.5, n_dilate=0, no_gpu=True,
+    )
+
+
 def _extract_middle_slice(nifti_bytes):
-    with tempfile.NamedTemporaryFile(suffix=".nii") as tmp:
+    with tempfile.NamedTemporaryFile(suffix=".nii", delete=False) as tmp:
         tmp.write(nifti_bytes)
         tmp.flush()
-        img = nib.load(tmp.name)
+        in_path = tmp.name
+
+    brain_path = in_path + "_brain.nii"
+    mask_path = in_path + "_mask.nii"
+    tiv_path = in_path + "_tiv.csv"
+    try:
+        _skull_strip(in_path, brain_path, mask_path, tiv_path)
+        img = nib.load(brain_path)
         # Different scanners/datasets store axes in different orders (e.g.
         # this repo's example.nii is RAS, but real-world uploads have come
         # in as PIR - axis 2 there is left-right, not top-bottom). Without
@@ -52,6 +74,10 @@ def _extract_middle_slice(nifti_bytes):
         # to RAS+ first so axis 2 always means superior-inferior (axial).
         img = nib.as_closest_canonical(img)
         data = img.get_fdata().squeeze()
+    finally:
+        for path in (in_path, brain_path, mask_path, tiv_path):
+            if os.path.exists(path):
+                os.remove(path)
 
     if data.ndim < 3:
         raise ValueError("Scan must be a 3D volume")

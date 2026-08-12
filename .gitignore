@@ -12,7 +12,8 @@ models/
 *.csv
 *.DS_Store
 logs/
-docs/
+docs/*
+!docs/screenshot.png
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

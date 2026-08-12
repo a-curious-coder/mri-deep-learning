@@ -1,233 +1,98 @@
-<!-- 
-Miguel notes
-- Pre-trained model (Transfer Learning) : 
-- My own CNN model
-  - Neurons 
-  - epochs
-  - dis rate
-- LSTM model
-  - epochs
-  - dis rate
-- FRAME SELECTION
-  - Most area of scan
-  - Choose best middle frame of mri scan
-  - Average image of 10 or so frames
-- Max/Average Pooling
-- PCA (Principal Component Analysis)
+# Neurosight
 
- -->
-# Neurosight: Experimental Alzheimer's Detection Platform
+Experimental Alzheimer's detection from MRI brain scans, built for an MSc dissertation — deep learning classification paired with an interactive 3D scan viewer.
 
-![Python](https://img.shields.io/badge/Python-3.8%2B-blue)
-![TensorFlow](https://img.shields.io/badge/TensorFlow-2.x-orange)
-![Flask](https://img.shields.io/badge/Flask-2.x-green)
-![JavaScript](https://img.shields.io/badge/JavaScript-ES6%2B-yellow)
-![Three.js](https://img.shields.io/badge/Three.js-Latest-lightgrey)
+<p align="center">
+  <a href="https://www.python.org/"><img src="https://shieldcn.dev/badge/Python-3.11-3776AB.svg?logo=python&logoColor=white&variant=secondary" alt="Python 3.11" /></a>
+  <a href="https://www.tensorflow.org/"><img src="https://shieldcn.dev/badge/TensorFlow-2.x-FF6F00.svg?logo=tensorflow&logoColor=white&variant=secondary" alt="TensorFlow 2.x" /></a>
+  <a href="https://flask.palletsprojects.com/"><img src="https://shieldcn.dev/badge/Flask-2.x-000000.svg?logo=flask&logoColor=white&variant=secondary" alt="Flask 2.x" /></a>
+  <a href="https://threejs.org/"><img src="https://shieldcn.dev/badge/Three.js-r149-000000.svg?logo=threedotjs&logoColor=white&variant=secondary" alt="Three.js" /></a>
+  <a href="LICENSE"><img src="https://shieldcn.dev/badge/License-MIT-3178C6.svg?variant=secondary" alt="MIT License" /></a>
+</p>
 
-Neurosight is an experimental platform developed as part of an MSc dissertation project, exploring the potential of deep learning in Alzheimer's Disease detection from MRI brain scans. This project combines backend processing with an interactive front-end to investigate neurological image analysis techniques.
+<p align="center">
+  <img src="docs/screenshot.png" alt="Neurosight 3D volume viewer rendering an MRI brain scan" width="720" />
+</p>
 
 ## Abstract
 
-This research investigates the application of deep learning techniques to MRI brain scans for the detection of Alzheimer's Disease. While results were promising, they also highlighted significant challenges and limitations in this approach. The project developed a web-based platform for data visualization and analysis, contributing to the ongoing exploration of AI in neurological diagnostics.
+This project investigates whether deep learning models can detect Alzheimer's disease from structural MRI brain scans, and builds a web-based platform for exploring that data in 3D. The models perform reasonably on the training distribution, but the more useful finding is where they break down: MRI alone struggles to differentiate Alzheimer's from other neurological conditions with similar structural presentation, which points toward multi-modal diagnosis (imaging plus clinical/tabular data) as the more realistic direction, not a single-scan classifier.
 
-## Key Findings
+## Key findings
 
-- Developed and tested multiple deep learning models for MRI analysis
-- Implemented an interactive 3D MRI viewer for enhanced data exploration
-- Identified limitations in using MRI scans alone for Alzheimer's detection
-- Explored the potential of transfer learning and custom CNN architectures
-- Highlighted the need for multi-modal approaches in neurological diagnostics
+- Deep learning models can pick up on Alzheimer's-associated structural patterns in MRI, but accuracy drops sharply when distinguishing it from other neurological conditions with overlapping presentation — a single MRI scan is not sufficient signal on its own.
+- Clinicians already favour CT over MRI for most diagnostic imaging in this space; this project's results are consistent with why — MRI's added structural detail didn't translate into a meaningfully more reliable classifier.
+- Emerging research suggests Alzheimer's may originate in the gut before affecting the brain, which reframes brain-MRI-only detection as inherently late-stage — a multi-modal, multi-region approach is likely the more promising research direction.
+- The frame/slice selection step (choosing which of ~256 slices per scan actually carries diagnostic signal) turned out to matter more for downstream accuracy than model architecture choice.
 
 ## Methodology
 
-The project employed a multi-faceted approach:
+1. **Data preprocessing** — skull stripping (isolating brain tissue from skull/background, since the skull carries no diagnostic signal and can only add noise), frame selection, and resizing/reshaping scans to a consistent resolution against the training set.
+2. **Model development** — a custom CNN, a transfer-learning approach on a pretrained base, and an LSTM variant, compared against each other.
+3. **Data augmentation** — used to compensate for a limited dataset size; traded off against a real risk of overfitting on augmented variants of the same underlying scans.
+4. **Feature engineering** — PCA and pooling strategies explored for dimensionality reduction ahead of classification.
+5. **Visualisation** — a Flask + Three.js platform for exploring scans in 3D, independent of the classification pipeline, built so results and raw data are inspectable rather than opaque.
 
-1. Data Preprocessing: Skull stripping, image segmentation, and frame selection
-2. Model Development: Custom CNNs, transfer learning, and LSTM models
-3. Feature Engineering: Exploration of PCA and pooling techniques
-4. Data Augmentation: Techniques to address limited dataset size
-5. Visualization: Development of a web-based 3D MRI viewer
+### Frame selection
 
-[Further details on methodology]
+MRI scans are 3D volumes (~256 slices each in this dataset); only some slices carry diagnostically useful information. Rather than skull-strip every slice of every scan, a lighter frame-selection model was trained first (on a labelled subset from [Kaggle](https://www.kaggle.com/code/hachemsfar/alzheimer-mri-model-data-exploration/data)) to pick the useful slices per scan before the heavier skull-stripping/classification pipeline runs on those — cutting the volume of data that needs full processing.
 
-## Results and Discussion
+## Results and limitations
 
-While the models showed promise in certain aspects, overall results were not definitive. Key challenges included:
+- Model accuracy was inconsistent across disease subtypes: strong at distinguishing healthy vs. diseased, much weaker at distinguishing *which* neurological condition when several present similarly on MRI.
+- Dataset size and diversity were the binding constraint, not model architecture — augmentation helped but couldn't fully substitute for more real, varied scans.
+- Each patient has 2+ scan sessions under one Security ID (SID); collapsing multiple sessions into one row per patient (rather than treating sessions independently) was necessary to avoid leaking patient identity across train/test splits.
 
-- Limited dataset size and quality
-- Difficulty in differentiating Alzheimer's from other neurological conditions
-- Potential overfitting due to data augmentation techniques
+## Future work
 
-[Expand on results and their implications]
+- Multi-modal integration — combining imaging with clinical/tabular data (cognitive test scores, demographics) rather than imaging alone.
+- Additional imaging modalities (PET, CT) alongside MRI.
+- Longitudinal data to track progression rather than single-timepoint classification.
+- Explainable AI techniques, so a clinician-facing tool could show *why* a scan was flagged, not just a label.
 
-## Limitations and Future Work
+## Tech stack
 
-This project highlighted several important limitations:
+| | |
+|---|---|
+| **ML / backend** | Python, TensorFlow/Keras, Flask, Pandas, NumPy, SciPy, OpenCV, scikit-learn, scikit-image, Nibabel (NIfTI file I/O) |
+| **Frontend** | Vanilla JS (ES modules), Three.js (3D volume/slice rendering), hand-written CSS |
+| **Data** | MRI scans in NIfTI format, tabular clinical data, stored in AWS S3 |
+| **Deployment** | Docker, GitHub Actions CI/CD |
 
-- MRI scans alone may not be sufficient for accurate Alzheimer's diagnosis
-- Need for multi-modal data integration (e.g., PET scans, clinical data)
-- Importance of larger, more diverse datasets
+## Running it
 
-Future work could explore:
+### Docker
 
-- Integration of additional imaging modalities and clinical data
-- Longitudinal studies to track disease progression
-- Exploration of explainable AI techniques for result interpretation
+```bash
+docker compose up --build
+```
 
-## Tech Stack
+Visit `http://localhost:5000`.
 
-### Backend
-- Python 3.8+
-- TensorFlow 2.x
-- Flask 2.x
-- Pandas, NumPy, SciPy
-- OpenCV
-- Scikit-learn, Scikit-image
-- Nibabel (for NIfTI file handling)
+### Local (Python venv)
 
-### Frontend
-- HTML5, CSS3, JavaScript (ES6+)
-- Three.js for 3D rendering
-- Tailwind CSS for styling
-- Chart.js for data visualization
+```bash
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+flask run
+```
 
-### Data Processing
-- Custom image preprocessing pipeline
-- Advanced data augmentation techniques
-- Transfer learning with pre-trained models
+Visit `http://localhost:5000`. On first load the viewer auto-loads a bundled example scan (`data/raw/example.nii`) so there's something to look at without needing the full dataset — click **Slices**/**Volume** in the toolbar to switch view modes.
 
-### Deployment
-- Docker for containerization
-- AWS S3 for data storage
-- GitHub Actions for CI/CD
+> **Note:** `requirements.txt` pins `tensorflow-intel` for Windows only (`sys_platform == "win32"`) — it's a Windows-only package and breaks installs on Linux/Mac otherwise.
 
-## Docker Setup
+## Data
 
-1. Build and run the Docker container:
-   ```
-   docker-compose up --build
-   ```
+- **MRI scans** — 3D structural brain scans, NIfTI format, ~256 slices per scan, 2+ sessions per patient.
+- **Clinical data** — demographics, cognitive test scores, and diagnosis labels, joined to imaging data by patient Security ID (SID).
 
-2. Access the application at `http://localhost:5000`
-
-## Development Setup
-
-1. Create and activate a virtual environment:
-   ```
-   python -m venv .venv
-   source .venv/bin/activate  # On Windows, use `.venv\Scripts\activate`
-   ```
-
-2. Install system dependencies (on Ubuntu/Debian):
-   ```
-   sudo apt-get update && sudo apt-get install -y libgl1-mesa-glx libglib2.0-0 tk
-   ```
-
-3. Install Python dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Run the Flask application:
-   ```
-   flask run
-   ```
-
-Visit `http://localhost:5000` in your browser to access the Neurosight platform.
-
-## Usage
-
-[Add detailed usage instructions here, including how to use the 3D viewer, upload scans, and interpret results]
-
-## Data Description
-
-Neurosight uses a combination of MRI scans and clinical data for analysis:
-
-- MRI Scans: 3D structural brain scans in NIfTI format
-- Clinical Data: Demographic information, cognitive test scores, and diagnosis labels
-
-[Add more details about your dataset, including sources and preprocessing steps]
+The bundled `data/raw/example.nii` is a single sample scan for demoing the viewer; it is not the training dataset.
 
 ## Acknowledgements
 
-This project was completed as part of an MSc dissertation at [University Name]. Special thanks to [Supervisor Name] for their guidance and support.
+Completed as part of an MSc in Data Science and Advanced Computing at the University of Reading.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-## Objectives
-
-### Skull stripping
-
-As a form of pre-processing to optimise the training of the CNN, segmenting the brain from the skull of each mri-scan leaves the important and necessary data behind. Any other features other than the brain could negatively influence the classification of the patient as the skull doesn't exhibit any differences whether the patient has alzheimer's or not; this won't be obvious to a computer.
-
-#### Tackling the problem
-There are various techniques to segmenting objects from surrounding objects in images; this will likely require a deep learning model. 
-
-
-### Frame Selection
-
-When classifying any disease/problem with the brain via an MRI scan, there are specific frame(s) selected to analysis by the doctor. The goal here is to teach the computer to select these frame(s) independently throughout all 6000 scans. Accuracy here is important as we want to optimise the data we pass to the final CNN model when predicting Alzheimer's during experimentation.
-
-#### Tackling the problem
-
-Manually select *x* amount of scan images from mri scan files to create a data-set to train a CNN on which will be used to predict/select the better frames for Alzheimer's classification in new MRI scans. Might require data augmentation to compound number of images are in the data-set.
-
-To save time with potential minor sacrifice to accuracy, I have chosen to train a CNN model on pre-existing brain MRI scan data-sets sourced online only consisting of the frames used in kaggle projects. The data-sets are available from the [Kaggle](https://www.kaggle.com/code/hachemsfar/alzheimer-mri-model-data-exploration/data).
-
-#### Problems / Solutions
-
-I found the data-set I downloaded from kaggle provided images with various diagnosis (which is fine) however, they all shared the same resolution; my mri scans didn't. To solve this, I will have to reshape/resize and potentially sheer my MRI scan images to match the resolution of the training data-set. 
-
-I will potentially rescale the brain images and fill in any blank space with black pixels (values of 0) which will be ignored by the trained CNN when stripping the skull. This is to maintain the aspect ratio of the brain scans; thus maintaining as much information as we can of each patient's brain.
-
-### Image segmentation
-
-The main goal of segmentation in the context of MRI brain scans is to separate the brain from the skull in each of the images. This is done to keep only the relevant data in each image when passing it to a CNN.
-
-<!-- Link papers talking about scan segmentation -->
-<!-- https://pubmed.ncbi.nlm.nih.gov/25945121/ -->
-<!-- https://ieeexplore.ieee.org/abstract/document/9234262-->
-
-### Image Augmentation
-
-To increase the size of the training set, the training images will need to be augmented so there are multiple variations of each MRI scan. The idea of this is to provide more data to the Neural Network for Alzheimer's classification.
-
-### Image Fabrication
-
-General Adversial Neural Networks are popular for fabricating entirely new data. The goal is to provide a GAN with labelled brain images (Each label representing the angle of the scan) as to generate further training data.
-
-## Problems
-
-### 1. How to select the best frames from scans?
-
-The initial goal was difficult to determine without more information from the literature. I can select the appropriate frames first or strip the skull from each frame in each scan to select the brain. If we select the appropriate frames first, we can then strip the skull from these images which is far less data to process versus skull stripping entire scans with 256 frames each. 
-
-## Limitations
-
-### Are MRI Scans Appropriate Data
-
-During the research phase of this project, I came across multiple papers sharing similar results in regards to the effectiveness of MRI brain scans for identifying Alzheimer's. The general consensus is that deep learning models are able to identify Alzheimer's from MRI scans of the brain; however, if the model is shown a brain scan of a disease it has been trained on, it struggles to differentiate between the different types of disease, thus consistently misclassifying MRI scans, having a detrimental impact on the accuracy results.
-
-Furthermore, in the real world, in the context of brain scans, doctors traditionally use CT Scans over MRI scans as they're better suited for identifying diseases. A final note... Alzheimer's Disease begins in the gut of humans, not the brain. Thus, I feel this project could have used scans of alternative regions of the body to identify the disease before it reaches the brain.
-
-<!-- ## What is Alzheimer's Disease? -->
-
-### Tabular Data
-
-Each patient is represented by a unique Security ID (SID). Each patient has had at least 2 scan sessions, thus has 2 or more MRI scans. In the effort of dimensionality reduction, I should try and represent each patient within a single row.
-
-<!-- Pie chart for Diagnosis to represent binary ratio -->
-<!--  Will Cross Validation be needed due to size/ratio of diagnosis -->
-<!-- Something to do with Age -->
-
-## Process
-
-This section will outline my thoughts behind what I've done and why I've done it for classifying the various types of data.
-
-I've stored the MRI tabular data in Amazon's AWS cloud storage for safe keeping. Using various API keys, I can securely load in the data to this python script.
-
-Before the data is given to a deep learning model, I need to clean and simplify the data such that there's enough data there to make a classification but not too much it's too much.
-
-### Appendices
-
+MIT — see [LICENSE](LICENSE).

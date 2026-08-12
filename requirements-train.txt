@@ -1,0 +1,3 @@
+# Extra deps for train_classifier.py only - not needed by the deployed app.
+-r requirements.txt
+datasets

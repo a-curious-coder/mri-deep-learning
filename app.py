@@ -23,6 +23,33 @@ else:
 
 app = Flask(__name__)
 
+# All sourced from OpenNeuro ds003592 (CC0) or this repo's own bundled
+# scan - none of these were in the model's training set (Falah/Alzheimer_MRI
+# on Hugging Face), so classifying them is a genuine unseen-data test rather
+# than replaying something the model has already memorized.
+EXAMPLES = {
+    'example': {
+        'label': 'Bundled example scan',
+        'full': 'data/raw/example.nii',
+        'preview': 'data/raw/example_preview.nii',
+    },
+    'sub-01': {
+        'label': 'OpenNeuro sub-01 (F, 21)',
+        'full': 'data/raw/examples/sub-01.nii',
+        'preview': 'data/raw/examples/sub-01_preview.nii',
+    },
+    'sub-03': {
+        'label': 'OpenNeuro sub-03 (F, 77)',
+        'full': 'data/raw/examples/sub-03.nii',
+        'preview': 'data/raw/examples/sub-03_preview.nii',
+    },
+    'sub-04': {
+        'label': 'OpenNeuro sub-04 (M, 68)',
+        'full': 'data/raw/examples/sub-04.nii',
+        'preview': 'data/raw/examples/sub-04_preview.nii',
+    },
+}
+
 
 @app.route('/')
 def index():
@@ -31,7 +58,8 @@ def index():
                            slice_mode=constants.SLICE_MODE,
                            test_size=constants.TEST_SIZE,
                            val_size=constants.VAL_SIZE,
-                           demo_mode=DEMO_MODE)
+                           demo_mode=DEMO_MODE,
+                           examples=EXAMPLES)
 
 
 @app.route('/run', methods=['POST'])
@@ -70,10 +98,14 @@ def classify():
     from classifier import classify_nifti
 
     try:
-        if request.form.get('use_example') == 'true':
+        example_id = request.form.get('example_id')
+        if example_id:
+            example = EXAMPLES.get(example_id)
+            if not example:
+                return jsonify({"error": "Unknown example scan"}), 400
             # Classify the full-resolution original, not the compressed
             # preview the browser loaded for the 3D viewer.
-            with open('data/raw/example.nii', 'rb') as f:
+            with open(example['full'], 'rb') as f:
                 result = classify_nifti(f.read())
         elif 'file' in request.files:
             result = classify_nifti(request.files['file'].read())
@@ -84,9 +116,13 @@ def classify():
         return jsonify({"error": str(e)}), 400
 
 
-@app.route('/static/data/raw/<path:filename>')
-def serve_nifti(filename):
-    return send_from_directory('data/raw', filename)
+@app.route('/examples/<example_id>/preview')
+def serve_example_preview(example_id):
+    example = EXAMPLES.get(example_id)
+    if not example:
+        return jsonify({"error": "Unknown example scan"}), 404
+    directory, filename = os.path.split(example['preview'])
+    return send_from_directory(directory, filename)
 
 
 @app.route('/data/<path:filename>')

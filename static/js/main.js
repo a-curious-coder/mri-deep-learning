@@ -13,7 +13,7 @@ import {
 
 let isImageLoaded = false;
 let currentScanBlob = null;
-let currentScanIsExample = false;
+let currentExampleId = null;
 
 function toggleTheme() {
     const isDark = document.documentElement.dataset.theme === 'dark';
@@ -33,7 +33,7 @@ function handleFileUpload(event) {
     if (file && file.name.endsWith('.nii')) {
         document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${file.name}`;
         currentScanBlob = file;
-        currentScanIsExample = false;
+        currentExampleId = null;
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -73,15 +73,15 @@ function triggerFileInput() {
     document.getElementById('file-input').click();
 }
 
-function loadExampleFile() {
+function loadExampleFile(exampleId, label) {
     // A compressed preview - fast to load and plenty detailed for viewing.
     // Classification (if requested) uses the full-resolution original
     // server-side instead, so accuracy isn't affected by this downsampling.
-    fetch('/static/data/raw/example_preview.nii')
+    fetch(`/examples/${exampleId}/preview`)
         .then(response => response.arrayBuffer())
         .then(arrayBuffer => {
             currentScanBlob = new Blob([arrayBuffer]);
-            currentScanIsExample = true;
+            currentExampleId = exampleId;
 
             const niftiInfo = loadNiftiImage(arrayBuffer);
 
@@ -90,7 +90,7 @@ function loadExampleFile() {
             isImageLoaded = true;
             updateUploadState();
 
-            document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii (preview)';
+            document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${label} (preview)`;
             animate(); // Start animation after loading
         })
         .catch(error => console.error('Error loading example preview:', error));
@@ -100,7 +100,7 @@ function handleClearImage() {
     clearImage();
     isImageLoaded = false;
     currentScanBlob = null;
-    currentScanIsExample = false;
+    currentExampleId = null;
     updateUploadState();
     document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer';
 
@@ -158,10 +158,10 @@ async function classifyScan() {
 
     try {
         const formData = new FormData();
-        if (currentScanIsExample) {
+        if (currentExampleId) {
             // Classify the full-resolution original server-side, not the
             // compressed preview blob used for the 3D viewer.
-            formData.append('use_example', 'true');
+            formData.append('example_id', currentExampleId);
         } else {
             formData.append('file', currentScanBlob, 'scan.nii');
         }
@@ -226,9 +226,11 @@ window.onload = function() {
     document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     document.getElementById('update-settings')?.addEventListener('click', updateSettings);
     document.getElementById('classify-button')?.addEventListener('click', classifyScan);
-    document.getElementById('load-example-button')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (!isImageLoaded) loadExampleFile();
+    document.querySelectorAll('.example-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!isImageLoaded) loadExampleFile(button.dataset.exampleId, button.textContent.trim());
+        });
     });
 
     document.querySelectorAll('.pipeline-action').forEach(button => {

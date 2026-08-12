@@ -86,7 +86,12 @@
                 <div id="mri-viewer-container" class="viewer-well cursor-pointer">
                     <div id="mri-2d-viewer" style="width: 100%; height: 100%;">
                         <p class="hint">Drop .nii file here or click to upload</p>
-                        <button type="button" id="load-example-button" class="btn-link">Or load the example scan (2.5MB)</button>
+                        <p class="hint-sub">Or load a sample scan the model has never seen:</p>
+                        <div class="example-list">
+                            {% for id, example in examples.items() %}
+                            <button type="button" class="btn-link example-button" data-example-id="{{ id }}">{{ example.label }}</button>
+                            {% endfor %}
+                        </div>
                     </div>
                 </div>
                 <input type="file" id="file-input" accept=".nii" class="hidden">

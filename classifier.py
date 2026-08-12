@@ -6,10 +6,9 @@ extracted from an uploaded .nii scan. A single forward pass on a 128x128
 grayscale image is lightweight - safe for a public, resource-constrained
 deploy, unlike the training pipeline.
 
-Known simplification: takes the middle slice along the volume's third
-axis with no orientation/qform-based reformatting, consistent with how
-the rest of this app already handles NIfTI axes. Good enough for a demo,
-not a clinically rigorous slice-selection step.
+Known simplification: takes a fixed-depth axial slice with no real
+frame-selection model. Good enough for a demo, not a clinically rigorous
+slice-selection step - see README's own note on this.
 """
 import tempfile
 
@@ -44,7 +43,15 @@ def _extract_middle_slice(nifti_bytes):
     with tempfile.NamedTemporaryFile(suffix=".nii") as tmp:
         tmp.write(nifti_bytes)
         tmp.flush()
-        data = nib.load(tmp.name).get_fdata().squeeze()
+        img = nib.load(tmp.name)
+        # Different scanners/datasets store axes in different orders (e.g.
+        # this repo's example.nii is RAS, but real-world uploads have come
+        # in as PIR - axis 2 there is left-right, not top-bottom). Without
+        # this, a fixed "axis 2 at 75% depth" heuristic silently picks the
+        # wrong anatomical plane on differently-oriented scans. Canonicalize
+        # to RAS+ first so axis 2 always means superior-inferior (axial).
+        img = nib.as_closest_canonical(img)
+        data = img.get_fdata().squeeze()
 
     if data.ndim < 3:
         raise ValueError("Scan must be a 3D volume")

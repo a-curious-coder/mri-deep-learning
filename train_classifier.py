@@ -5,6 +5,14 @@ private clinical (ADNI/OASIS-style) dataset this repo doesn't ship. This
 script trains against Falah/Alzheimer_MRI (Apache-2.0, public, no auth
 needed, ~28MB) so the public demo can do real inference without requiring
 gated data. Run once locally; commit the resulting checkpoint.
+
+GPU: `source .venv/bin/activate` sets LD_LIBRARY_PATH for the pip-installed
+CUDA libs automatically (see the bottom of .venv/bin/activate) - needed
+because TensorFlow dlopen()s CUDA at runtime rather than linking it
+normally, which doesn't inherit DT_RUNPATH. Verify with
+`python -c "import tensorflow as tf; print(tf.config.list_physical_devices('GPU'))"`.
+If the venv gets recreated, re-append that block (or just re-run
+`uv pip install tensorflow[and-cuda]` and re-add the LD_LIBRARY_PATH export).
 """
 import numpy as np
 import tensorflow as tf

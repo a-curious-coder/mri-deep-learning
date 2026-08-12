@@ -5,15 +5,28 @@ import {
     clearImage,
     loadNiftiImage,
     animate,
-    updateCanvasSize,
     setViewMode,
     updateVolumeThreshold,
     updateVolumeSteps,
+    updateVolumeClip,
 } from './mriViewer.js';
 
 let isImageLoaded = false;
 let currentScanBlob = null;
 let currentExampleId = null;
+// clearImage() wipes #mri-viewer-container's innerHTML down to just the
+// upload hint, losing the example-scan buttons rendered by Jinja on first
+// load - snapshot that markup once so it can be restored after a clear.
+let originalViewerHTML = null;
+
+function bindExampleButtons() {
+    document.querySelectorAll('.example-button').forEach(button => {
+        button.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!isImageLoaded) loadExampleFile(button.dataset.exampleId, button.textContent.trim());
+        });
+    });
+}
 
 function toggleTheme() {
     const isDark = document.documentElement.dataset.theme === 'dark';
@@ -56,16 +69,22 @@ function updateUploadState() {
     const dropZone = document.getElementById('mri-viewer-container');
     const clearButton = document.getElementById('clear-button');
     const classifyButton = document.getElementById('classify-button');
+    const classifyOverlay = document.querySelector('.classify-overlay');
     if (isImageLoaded) {
         dropZone.removeEventListener('click', triggerFileInput);
         dropZone.classList.remove('cursor-pointer');
         clearButton.classList.remove('hidden');
-        if (classifyButton) classifyButton.disabled = false;
+        if (classifyButton) {
+            classifyButton.disabled = false;
+            classifyButton.classList.remove('hidden');
+        }
+        classifyOverlay?.classList.remove('hidden');
     } else {
         dropZone.addEventListener('click', triggerFileInput);
         dropZone.classList.add('cursor-pointer');
         clearButton.classList.add('hidden');
         if (classifyButton) classifyButton.disabled = true;
+        classifyOverlay?.classList.add('hidden');
     }
 }
 
@@ -98,6 +117,10 @@ function loadExampleFile(exampleId, label) {
 
 function handleClearImage() {
     clearImage();
+    if (originalViewerHTML !== null) {
+        document.getElementById('mri-viewer-container').innerHTML = originalViewerHTML;
+        bindExampleButtons();
+    }
     isImageLoaded = false;
     currentScanBlob = null;
     currentExampleId = null;
@@ -117,6 +140,10 @@ function renderClassifyResults(data) {
     const container = document.getElementById('classify-results');
     if (!container) return;
 
+    // The button's job is done once a result is showing - leaving it
+    // visible just overlaps the detail panel when expanded.
+    document.getElementById('classify-button')?.classList.add('hidden');
+
     const top = data.predictions.find(p => p.label === data.predicted_class) || data.predictions[0];
     const topPct = (top.probability * 100).toFixed(1);
 
@@ -135,7 +162,7 @@ function renderClassifyResults(data) {
         <div class="result-summary">
             <span class="result-label">${data.predicted_class}</span>
             <span class="result-pct">${topPct}%</span>
-            <button type="button" class="result-toggle">Details</button>
+            <button type="button" class="result-toggle">More details</button>
         </div>
         <div class="result-detail hidden">
             ${bars}
@@ -146,7 +173,7 @@ function renderClassifyResults(data) {
     container.querySelector('.result-toggle')?.addEventListener('click', (e) => {
         const detail = container.querySelector('.result-detail');
         detail?.classList.toggle('hidden');
-        e.target.textContent = detail?.classList.contains('hidden') ? 'Details' : 'Hide';
+        e.target.textContent = detail?.classList.contains('hidden') ? 'More details' : 'Hide';
     });
 }
 
@@ -180,12 +207,6 @@ async function classifyScan() {
     } finally {
         button.disabled = false;
     }
-}
-
-function applyCanvasSize() {
-    const width = parseInt(document.getElementById('canvas-width').value, 10);
-    const height = parseInt(document.getElementById('canvas-height').value, 10);
-    updateCanvasSize(width, height);
 }
 
 async function runPipelineAction(button) {
@@ -226,22 +247,26 @@ window.onload = function() {
     document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     document.getElementById('update-settings')?.addEventListener('click', updateSettings);
     document.getElementById('classify-button')?.addEventListener('click', classifyScan);
-    document.querySelectorAll('.example-button').forEach(button => {
-        button.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!isImageLoaded) loadExampleFile(button.dataset.exampleId, button.textContent.trim());
-        });
-    });
+    originalViewerHTML = document.getElementById('mri-viewer-container').innerHTML;
+    bindExampleButtons();
 
     document.querySelectorAll('.pipeline-action').forEach(button => {
         button.addEventListener('click', () => runPipelineAction(button));
     });
 
-    document.querySelectorAll('.mode-btn').forEach(button => {
+    document.querySelectorAll('.mode-btn[data-mode]').forEach(button => {
         button.addEventListener('click', () => {
-            document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.mode-btn[data-mode]').forEach(b => b.classList.remove('active'));
             button.classList.add('active');
             setViewMode(button.dataset.mode);
+        });
+    });
+
+    document.querySelectorAll('.threshold-btn').forEach(button => {
+        button.addEventListener('click', () => {
+            document.querySelectorAll('.threshold-btn').forEach(b => b.classList.remove('active'));
+            button.classList.add('active');
+            updateVolumeThreshold(button.dataset.threshold);
         });
     });
 
@@ -270,9 +295,6 @@ window.onload = function() {
         });
     });
 
-    document.getElementById('volume-threshold')?.addEventListener('input', function() {
-        updateVolumeThreshold(this.value);
-    });
     document.getElementById('volume-steps')?.addEventListener('input', function() {
         updateVolumeSteps(this.value);
     });
@@ -316,22 +338,20 @@ window.onload = function() {
         console.error('Clear button element not found');
     }
 
-    // Add event listeners for sliders
+    // Add event listeners for sliders. Each also feeds the volume view's
+    // clip planes (no-op in slices mode) - moving a slider away from its
+    // default reveals a cutaway through the volume at that position,
+    // matching the cross-section the same slider shows in slices mode.
     document.getElementById('axial-slider').addEventListener('input', function() {
         updateSlices(parseInt(this.value), parseInt(document.getElementById('sagittal-slider').value), parseInt(document.getElementById('coronal-slider').value));
+        updateVolumeClip('axial', this.value / 100);
     });
     document.getElementById('sagittal-slider').addEventListener('input', function() {
         updateSlices(parseInt(document.getElementById('axial-slider').value), parseInt(this.value), parseInt(document.getElementById('coronal-slider').value));
+        updateVolumeClip('sagittal', this.value / 100);
     });
     document.getElementById('coronal-slider').addEventListener('input', function() {
         updateSlices(parseInt(document.getElementById('axial-slider').value), parseInt(document.getElementById('sagittal-slider').value), parseInt(this.value));
+        updateVolumeClip('coronal', this.value / 100);
     });
-
-    // Add event listener for the Apply Canvas Size button
-    const applyCanvasSizeButton = document.getElementById('apply-canvas-size');
-    if (applyCanvasSizeButton) {
-        applyCanvasSizeButton.addEventListener('click', applyCanvasSize);
-    } else {
-        console.error('Apply Canvas Size button not found');
-    }
 };

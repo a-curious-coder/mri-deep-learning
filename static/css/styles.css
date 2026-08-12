@@ -289,9 +289,14 @@ body {
 .tool-panel .panel-label {
   margin-bottom: 0.9rem;
 }
-.viewer-well {
+.viewer-well-wrap {
+  position: relative;
   flex: 1 1 auto;
   min-height: 10rem;
+  display: flex;
+}
+.viewer-well {
+  flex: 1 1 auto;
   width: 100%;
   background: var(--bg-well);
   border: 1px dashed var(--border-strong);
@@ -477,23 +482,6 @@ input[type="number"]::placeholder {
   margin: 0 0 0.9rem;
 }
 
-/* Canvas settings row */
-.canvas-row {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-@media (max-width: 30rem) {
-  .canvas-row {
-    grid-template-columns: 1fr;
-  }
-}
-.btn-inline {
-  width: auto;
-  padding: 0.55rem 1.25rem;
-  margin-top: 1.25rem;
-}
-
 /* Activity log */
 .log-panel {
   flex: 1 1 auto;
@@ -547,17 +535,42 @@ input[type="number"]::placeholder {
   font-size: 0.8rem;
   color: var(--text-dim);
 }
+.classify-overlay {
+  position: absolute;
+  inset: 0.75rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: 0.5rem;
+  pointer-events: none;
+  overflow-y: auto;
+}
+.classify-overlay > * {
+  pointer-events: auto;
+}
+.btn-overlay {
+  font-size: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+}
 .classify-results {
-  margin-top: 1.25rem;
+  width: 100%;
+}
+.classify-results:empty {
+  display: none;
 }
 .result-summary {
   display: flex;
   align-items: center;
   gap: 0.6rem;
   padding: 0.6rem 0.75rem;
-  background: var(--bg-well);
+  background: var(--bg-panel);
   border: 1px solid var(--border);
   border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
 }
 .result-label {
   font-family: var(--font-mono);
@@ -588,6 +601,12 @@ input[type="number"]::placeholder {
   display: grid;
   gap: 0.9rem;
   margin-top: 0.9rem;
+  padding: 0.75rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  flex-shrink: 0;
 }
 .result-detail.hidden {
   display: none;

@@ -8,6 +8,13 @@ let controls;
 let isNiftiLoaded = false;
 let viewMode = 'slices';
 let volumeMesh, volumeTexture;
+// Clip planes for the volume view, driven by the same axial/sagittal/coronal
+// sliders used to position the 2D slice planes. Disabled by default so a
+// freshly-loaded scan always previews the whole head; each axis switches on
+// the first time its slider is moved, revealing a cutaway from that point.
+let clipEnabled = { axial: false, sagittal: false, coronal: false };
+let clipValues = { axial: 0.5, sagittal: 0.5, coronal: 0.5 };
+let currentThreshold = 0.15;
 
 export function initMRIViewer() {
     // Get the container element
@@ -25,6 +32,8 @@ export function initMRIViewer() {
 
     volumeMesh = null;
     volumeTexture = null;
+    clipEnabled = { axial: false, sagittal: false, coronal: false };
+    clipValues = { axial: 0.5, sagittal: 0.5, coronal: 0.5 };
 
     // Scene setup
     scene = new THREE.Scene();
@@ -303,6 +312,11 @@ precision highp sampler3D;
 uniform sampler3D map;
 uniform float threshold;
 uniform int steps;
+// x=sagittal, y=coronal, z=axial - matches the texture's own width/height/
+// depth axes (dims[0]/[1]/[2]) that buildVolumeTexture and the slice planes
+// already use, so slider position lines up with the same anatomical cut.
+uniform vec3 clipEnabled;
+uniform vec3 clipValue;
 
 in vec3 vOrigin;
 in vec3 vDirection;
@@ -334,18 +348,39 @@ void main() {
     vec4 accumulated = vec4(0.0);
     for (int i = 0; i < 512; i++) {
         if (float(i) >= float(steps)) break;
-        float density = texture(map, p + 0.5).r;
+        vec3 uvw = p + 0.5;
+        bool clipped =
+            (clipEnabled.x > 0.5 && uvw.x > clipValue.x) ||
+            (clipEnabled.y > 0.5 && uvw.y > clipValue.y) ||
+            (clipEnabled.z > 0.5 && uvw.z > clipValue.z);
+        if (clipped) {
+            p += rayDir * delta;
+            continue;
+        }
+        float density = texture(map, uvw).r;
         if (density > threshold) {
-            float alpha = density * 0.2;
-            accumulated.rgb += (1.0 - accumulated.a) * vec3(density) * alpha;
+            // Remap threshold..1 -> 0..1 so tissue just above threshold
+            // isn't near-black. No extra gain curve here - a pow() boost
+            // brightened everything toward the same value, flattening the
+            // density gradation that shows internal structure. A lower
+            // per-step alpha keeps more samples translucent instead of
+            // saturating to opaque a few steps in, so layers further into
+            // the volume still contribute instead of being occluded early.
+            float normalized = clamp((density - threshold) / (1.0 - threshold), 0.0, 1.0);
+            float alpha = normalized * 0.25;
+            accumulated.rgb += (1.0 - accumulated.a) * vec3(normalized) * alpha;
             accumulated.a += (1.0 - accumulated.a) * alpha;
-            if (accumulated.a >= 0.95) break;
+            if (accumulated.a >= 0.97) break;
         }
         p += rayDir * delta;
     }
 
     if (accumulated.a < 0.01) discard;
-    outColor = accumulated;
+    // Linear brightness boost on the final composited color, not per-step -
+    // scaling the whole result up preserves the relative contrast between
+    // samples (unlike an earlier per-step pow() curve that flattened it)
+    // while fixing the overall render being too dim to read clearly.
+    outColor = vec4(min(accumulated.rgb * 2.2, vec3(1.0)), accumulated.a);
 }
 `;
 
@@ -382,23 +417,40 @@ function buildVolumeTexture() {
 }
 
 function createVolumeMesh(texture) {
-    const thresholdInput = document.getElementById('volume-threshold');
     const stepsInput = document.getElementById('volume-steps');
 
     const geometry = new THREE.BoxGeometry(1, 1, 1);
+    // A fixed 1x1x1 cube stretches whichever axis has fewer voxels - the
+    // slice planes already avoid this by scaling to dims/maxDim, so match
+    // that here for the same proportions between view modes.
+    const dims = niftiHeader.dims.slice(1, 4);
+    const maxDim = Math.max(...dims);
+
     const material = new THREE.ShaderMaterial({
         glslVersion: THREE.GLSL3,
         uniforms: {
             map: { value: texture },
-            threshold: { value: thresholdInput ? parseFloat(thresholdInput.value) : 0.1 },
-            steps: { value: stepsInput ? parseInt(stepsInput.value, 10) : 100 },
+            threshold: { value: currentThreshold },
+            steps: { value: stepsInput ? parseInt(stepsInput.value, 10) : 200 },
+            clipEnabled: { value: new THREE.Vector3(
+                clipEnabled.sagittal ? 1 : 0,
+                clipEnabled.coronal ? 1 : 0,
+                clipEnabled.axial ? 1 : 0,
+            ) },
+            clipValue: { value: new THREE.Vector3(clipValues.sagittal, clipValues.coronal, clipValues.axial) },
         },
         vertexShader: volumeVertexShader,
         fragmentShader: volumeFragmentShader,
         side: THREE.BackSide,
         transparent: true,
     });
-    return new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
+    // dims[0]/[1]/[2] map to the mesh's local x/y/z (matching the texture's
+    // width/height/depth from buildVolumeTexture) - scale is in local space,
+    // applied before the mesh's own rotateY/rotateX, so this lines up with
+    // the un-rotated texture axes correctly.
+    mesh.scale.set(dims[0] / maxDim, dims[1] / maxDim, dims[2] / maxDim);
+    return mesh;
 }
 
 export function setViewMode(mode) {
@@ -411,6 +463,10 @@ export function setViewMode(mode) {
     if (mode === 'volume') {
         slicePlanes.forEach(p => p && (p.visible = false));
         sliceLines.forEach(l => l && (l.visible = false));
+        // Grayscale density accumulation is low-contrast against the page's
+        // light background - volume rendering needs a dark backdrop
+        // regardless of site theme, same as any medical volume viewer.
+        scene.background = new THREE.Color(0x0b0b0d);
 
         if (!volumeMesh && niftiImage) {
             volumeTexture = buildVolumeTexture();
@@ -431,24 +487,33 @@ export function setViewMode(mode) {
         slicePlanes.forEach(p => p && (p.visible = true));
         sliceLines.forEach(l => l && (l.visible = true));
         if (volumeMesh) volumeMesh.visible = false;
+        scene.background = null;
     }
 }
 
 export function updateVolumeThreshold(value) {
-    if (volumeMesh) volumeMesh.material.uniforms.threshold.value = parseFloat(value);
+    currentThreshold = parseFloat(value);
+    if (volumeMesh) volumeMesh.material.uniforms.threshold.value = currentThreshold;
 }
 
 export function updateVolumeSteps(value) {
     if (volumeMesh) volumeMesh.material.uniforms.steps.value = parseInt(value, 10);
 }
 
-export function updateCanvasSize(width, height) {
-    if (!renderer || !camera) return;
-
-    renderer.setSize(width, height);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-    renderer.render(scene, camera);
+// axis is 'axial' | 'sagittal' | 'coronal'; fraction is 0..1 along that
+// axis (matching the slice-position sliders' own 0..100 range / 100).
+// Enables clipping for that axis on first call - see the clipEnabled
+// comment above for why it starts disabled.
+export function updateVolumeClip(axis, fraction) {
+    clipEnabled[axis] = true;
+    clipValues[axis] = fraction;
+    if (!volumeMesh) return;
+    volumeMesh.material.uniforms.clipEnabled.value.set(
+        clipEnabled.sagittal ? 1 : 0,
+        clipEnabled.coronal ? 1 : 0,
+        clipEnabled.axial ? 1 : 0,
+    );
+    volumeMesh.material.uniforms.clipValue.value.set(clipValues.sagittal, clipValues.coronal, clipValues.axial);
 }
 
 export function loadNiftiImage(arrayBuffer) {

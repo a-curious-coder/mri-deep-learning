@@ -53,45 +53,37 @@
                                 <p class="panel-label">Render Settings</p>
                                 <div class="settings-group">
                                     <div class="field">
-                                        <label for="volume-threshold">Threshold</label>
-                                        <input type="range" id="volume-threshold" min="0" max="1" step="0.01" value="0.55">
+                                        <label>Tissue</label>
+                                        <div class="mode-switch" role="group" aria-label="Tissue visibility">
+                                            <button type="button" class="mode-btn active threshold-btn" data-threshold="0.15">All tissue</button>
+                                            <button type="button" class="mode-btn threshold-btn" data-threshold="0.3">Dense only</button>
+                                        </div>
                                     </div>
                                     <div class="field">
                                         <label for="volume-steps">Ray Steps</label>
-                                        <input type="range" id="volume-steps" min="10" max="200" step="10" value="100">
+                                        <input type="range" id="volume-steps" min="10" max="200" step="10" value="200">
                                     </div>
                                 </div>
-                            </div>
-                        </details>
-                        <details class="tool">
-                            <summary title="Canvas size" aria-label="Canvas size">⛶</summary>
-                            <div class="tool-panel">
-                                <p class="panel-label">Canvas Size</p>
-                                <div class="canvas-row">
-                                    <div class="field">
-                                        <label for="canvas-width">Width</label>
-                                        <input type="number" id="canvas-width" value="800">
-                                    </div>
-                                    <div class="field">
-                                        <label for="canvas-height">Height</label>
-                                        <input type="number" id="canvas-height" value="600">
-                                    </div>
-                                </div>
-                                <button id="apply-canvas-size" class="btn btn-inline">Apply</button>
                             </div>
                         </details>
                         <button id="clear-button" class="btn btn-danger hidden" title="Clear the current MRI image">Clear</button>
                     </div>
                 </div>
-                <div id="mri-viewer-container" class="viewer-well cursor-pointer">
-                    <div id="mri-2d-viewer" style="width: 100%; height: 100%;">
-                        <p class="hint">Drop .nii file here or click to upload</p>
-                        <p class="hint-sub">Or load a sample scan the model has never seen:</p>
-                        <div class="example-list">
-                            {% for id, example in examples.items() %}
-                            <button type="button" class="btn-link example-button" data-example-id="{{ id }}">{{ example.label }}</button>
-                            {% endfor %}
+                <div class="viewer-well-wrap">
+                    <div id="mri-viewer-container" class="viewer-well cursor-pointer">
+                        <div id="mri-2d-viewer" style="width: 100%; height: 100%;">
+                            <p class="hint">Drop .nii file here or click to upload</p>
+                            <p class="hint-sub">Or load a sample scan the model has never seen:</p>
+                            <div class="example-list">
+                                {% for id, example in examples.items() %}
+                                <button type="button" class="btn-link example-button" data-example-id="{{ id }}">{{ example.label }}</button>
+                                {% endfor %}
+                            </div>
                         </div>
+                    </div>
+                    <div class="classify-overlay hidden">
+                        <button id="classify-button" class="btn btn-overlay" disabled title="Classify the loaded scan">Classify Scan</button>
+                        <div id="classify-results" class="classify-results"></div>
                     </div>
                 </div>
                 <input type="file" id="file-input" accept=".nii" class="hidden">
@@ -113,11 +105,6 @@
             </div>
 
             <div class="panel side-panel">
-                <p class="panel-label">Classification</p>
-                <p class="classify-hint">Upload a .nii scan above, then classify it against the trained model.</p>
-                <button id="classify-button" class="btn" disabled title="Classify the loaded scan">Classify Scan</button>
-                <div id="classify-results" class="classify-results"></div>
-
                 {% if not demo_mode %}
                 <div class="settings-sub">
                     <h3>Dataset Parameters</h3>

@@ -1,5 +1,5 @@
 # Use an official Python runtime as the base image
-FROM python:3.8-slim
+FROM python:3.11-slim
 
 # Set the working directory in the container
 WORKDIR /app
@@ -27,5 +27,7 @@ ENV FLASK_RUN_HOST=0.0.0.0
 # Expose the port the app runs on
 EXPOSE 5000
 
-# Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+# Run the application - single worker (TF model is loaded per-process, so
+# more workers means duplicating that memory) and a longer timeout since the
+# first classify request has to cold-load the model.
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "1", "--timeout", "60", "app:app"]

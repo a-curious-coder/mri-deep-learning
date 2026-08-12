@@ -29,31 +29,48 @@ jobs:
   deploy:
     needs: build-and-test
     runs-on: ubuntu-latest
-    # Skip cleanly until VPS_HOST/VPS_USER/VPS_SSH_KEY secrets are configured,
-    # instead of hanging for ~4 minutes trying to SSH to an empty host.
+    # Skip cleanly until the DEPLOY_* secrets are configured, instead of
+    # hanging for ~4 minutes trying to SSH to an empty host.
     if: github.ref == 'refs/heads/main' && github.event_name == 'push' && vars.DEPLOY_ENABLED == 'true'
 
     steps:
     - uses: actions/checkout@v4
 
     - name: Build Docker image
-      run: docker build -t neurosight:latest .
+      run: docker build -t scanview:latest .
+
+    - name: Render Caddyfile
+      env:
+        DOMAIN: ${{ secrets.DOMAIN }}
+      run: envsubst < deploy/Caddyfile.template > scanview.caddy.rendered
 
     - name: Deploy to VPS
       env:
-        VPS_HOST: ${{ secrets.VPS_HOST }}
-        VPS_USER: ${{ secrets.VPS_USER }}
-        VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
       run: |
-        echo "$VPS_SSH_KEY" > vps_ssh_key
-        chmod 600 vps_ssh_key
-        docker save neurosight:latest | gzip > neurosight.tar.gz
-        scp -i vps_ssh_key -o StrictHostKeyChecking=no neurosight.tar.gz ${VPS_USER}@${VPS_HOST}:~/
-        ssh -i vps_ssh_key -o StrictHostKeyChecking=no ${VPS_USER}@${VPS_HOST} '
-          docker load < neurosight.tar.gz
-          docker stop neurosight-container || true
-          docker rm neurosight-container || true
-          docker run -d --name neurosight-container -p 5000:5000 neurosight:latest
-          rm neurosight.tar.gz
-        '
-        rm vps_ssh_key neurosight.tar.gz
+        echo "$DEPLOY_KEY" > deploy_key
+        chmod 600 deploy_key
+        docker save scanview:latest | gzip > scanview.tar.gz
+
+        scp -i deploy_key -o StrictHostKeyChecking=no scanview.tar.gz scanview.caddy.rendered \
+          ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/
+
+        ssh -i deploy_key -o StrictHostKeyChecking=no ${DEPLOY_USER}@${DEPLOY_HOST} "
+          docker load < ${DEPLOY_PATH}/scanview.tar.gz
+          docker stop scanview-container || true
+          docker rm scanview-container || true
+          docker run -d --name scanview-container \
+            --restart unless-stopped \
+            -p 127.0.0.1:8095:5000 \
+            -e DEMO_MODE=true \
+            --memory=768m --memory-swap=768m --cpus=1.5 \
+            scanview:latest
+          rm ${DEPLOY_PATH}/scanview.tar.gz
+
+          sudo -n cp ${DEPLOY_PATH}/scanview.caddy.rendered /etc/caddy/sites/scanview.caddy
+          sudo -n systemctl reload caddy
+        "
+        rm deploy_key scanview.tar.gz scanview.caddy.rendered

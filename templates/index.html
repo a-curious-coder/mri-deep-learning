@@ -8,6 +8,9 @@
         if (localStorage.getItem('theme') === 'dark') {
             document.documentElement.dataset.theme = 'dark';
         }
+        if (window.self !== window.top) {
+            document.documentElement.classList.add('is-embedded');
+        }
     </script>
     <script type="importmap">
         {

@@ -64,6 +64,26 @@ body {
   flex-direction: column;
 }
 
+/* Embedded (iframe) mode: curated, compact view - no header/activity log,
+   tighter padding, so a small embed box shows the viewer and the
+   classifier prominently instead of a shrunk copy of the full site. */
+.is-embedded .hdr,
+.is-embedded .log-panel {
+  display: none;
+}
+.is-embedded .wrap {
+  padding: 0.85rem;
+}
+.is-embedded .grid {
+  gap: 0.85rem;
+}
+.is-embedded .panel {
+  padding: 0.85rem;
+}
+.is-embedded .viewer-well {
+  min-height: 8rem;
+}
+
 /* Header */
 .hdr {
   flex: 0 0 auto;

@@ -18,6 +18,14 @@ import numpy as np
 import tensorflow as tf
 from PIL import Image
 
+# A single 128x128 forward pass is sub-second on CPU either way, and pinning
+# to CPU avoids GPU/cuDNN environment differences (driver, compute
+# capability) between wherever this runs and whatever machine trained the
+# model - the deploy target has no GPU at all, so this keeps local dev
+# behaviour consistent with production instead of depending on local
+# hardware happening to work.
+tf.config.set_visible_devices([], "GPU")
+
 IMAGE_SIZE = 128
 CLASS_NAMES = ["Mild Demented", "Moderate Demented", "Non Demented", "Very Mild Demented"]
 MODEL_PATH = "models/alzheimer_classifier.keras"

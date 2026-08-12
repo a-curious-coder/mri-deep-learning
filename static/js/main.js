@@ -5,7 +5,6 @@ import {
     clearImage,
     loadNiftiImage,
     animate,
-    initMRIViewer,
     updateCanvasSize,
     setViewMode,
     updateVolumeThreshold,
@@ -14,6 +13,7 @@ import {
 
 let isImageLoaded = false;
 let currentScanBlob = null;
+let currentScanIsExample = false;
 
 function toggleTheme() {
     const isDark = document.documentElement.dataset.theme === 'dark';
@@ -33,6 +33,7 @@ function handleFileUpload(event) {
     if (file && file.name.endsWith('.nii')) {
         document.getElementById('mri-viewer-title').textContent = `3D MRI Viewer - ${file.name}`;
         currentScanBlob = file;
+        currentScanIsExample = false;
 
         const reader = new FileReader();
         reader.onload = function(e) {
@@ -72,28 +73,15 @@ function triggerFileInput() {
     document.getElementById('file-input').click();
 }
 
-// Check if the example.nii file exists
-fetch('/static/data/raw/example.nii')
-    .then(response => {
-        if (response.ok) {
-            console.log('example.nii file exists');
-            // Load the file automatically
-            loadExampleFile();
-        } else {
-            console.log('example.nii file does not exist');
-            updateUploadState();
-        }
-    })
-    .catch(error => {
-        console.error('Error checking for example.nii:', error);
-        updateUploadState();
-    });
-
 function loadExampleFile() {
-    fetch('/static/data/raw/example.nii')
+    // A compressed preview - fast to load and plenty detailed for viewing.
+    // Classification (if requested) uses the full-resolution original
+    // server-side instead, so accuracy isn't affected by this downsampling.
+    fetch('/static/data/raw/example_preview.nii')
         .then(response => response.arrayBuffer())
         .then(arrayBuffer => {
             currentScanBlob = new Blob([arrayBuffer]);
+            currentScanIsExample = true;
 
             const niftiInfo = loadNiftiImage(arrayBuffer);
 
@@ -102,16 +90,17 @@ function loadExampleFile() {
             isImageLoaded = true;
             updateUploadState();
 
-            document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii';
+            document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer - example.nii (preview)';
             animate(); // Start animation after loading
         })
-        .catch(error => console.error('Error loading example.nii:', error));
+        .catch(error => console.error('Error loading example preview:', error));
 }
 
 function handleClearImage() {
     clearImage();
     isImageLoaded = false;
     currentScanBlob = null;
+    currentScanIsExample = false;
     updateUploadState();
     document.getElementById('mri-viewer-title').textContent = '3D MRI Viewer';
 
@@ -149,7 +138,13 @@ async function classifyScan() {
 
     try {
         const formData = new FormData();
-        formData.append('file', currentScanBlob, 'scan.nii');
+        if (currentScanIsExample) {
+            // Classify the full-resolution original server-side, not the
+            // compressed preview blob used for the 3D viewer.
+            formData.append('use_example', 'true');
+        } else {
+            formData.append('file', currentScanBlob, 'scan.nii');
+        }
         const response = await fetch('/classify', { method: 'POST', body: formData });
         const data = await response.json();
 
@@ -194,11 +189,11 @@ async function runPipelineAction(button) {
 }
 
 window.onload = function() {
-    // Initialize MRI viewer
-    const mriViewerContainer = document.getElementById('mri-viewer-container');
-    if (mriViewerContainer) {
-        initMRIViewer();
-    } else {
+    // The 3D scene/renderer is only initialized once a scan is actually
+    // loaded (loadNiftiImage calls initMRIViewer itself) - initializing it
+    // eagerly here would wipe the upload hint/example-load button before
+    // anyone can see or click them.
+    if (!document.getElementById('mri-viewer-container')) {
         console.error('MRI viewer container not found');
     }
 
@@ -206,9 +201,15 @@ window.onload = function() {
     const fileInput = document.getElementById('file-input');
     const clearButton = document.getElementById('clear-button');
 
+    updateUploadState();
+
     document.getElementById('theme-toggle')?.addEventListener('click', toggleTheme);
     document.getElementById('update-settings')?.addEventListener('click', updateSettings);
     document.getElementById('classify-button')?.addEventListener('click', classifyScan);
+    document.getElementById('load-example-button')?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (!isImageLoaded) loadExampleFile();
+    });
 
     document.querySelectorAll('.pipeline-action').forEach(button => {
         button.addEventListener('click', () => runPipelineAction(button));

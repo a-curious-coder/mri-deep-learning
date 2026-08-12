@@ -298,6 +298,21 @@ body {
   font-family: var(--font-mono);
   text-align: center;
 }
+.btn-link {
+  display: block;
+  margin: 0.75rem auto 0;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.btn-link:hover {
+  color: var(--accent-hover);
+}
 
 .sliders {
   margin-top: 1.5rem;

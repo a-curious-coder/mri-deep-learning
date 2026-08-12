@@ -69,11 +69,16 @@ def update_settings():
 def classify():
     from classifier import classify_nifti
 
-    if 'file' not in request.files:
-        return jsonify({"error": "No file uploaded"}), 400
-
     try:
-        result = classify_nifti(request.files['file'].read())
+        if request.form.get('use_example') == 'true':
+            # Classify the full-resolution original, not the compressed
+            # preview the browser loaded for the 3D viewer.
+            with open('data/raw/example.nii', 'rb') as f:
+                result = classify_nifti(f.read())
+        elif 'file' in request.files:
+            result = classify_nifti(request.files['file'].read())
+        else:
+            return jsonify({"error": "No file uploaded"}), 400
         return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
